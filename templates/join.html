@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Join Workshop | Digital SPD{% endblock %}
+
+{% block styles %}
+    body {
+        min-height: 100vh;
+        background: linear-gradient(rgba(0, 0, 0, .28), rgba(0, 0, 0, .28)),
+                    url("/resources/base_background.jpg") center / cover no-repeat fixed;
+    }
+    .app-shell { min-height: 100vh; grid-template-rows: 1fr 68px; }
+    .site-header, .assistant-button { display: none; }
+    .site-main { min-height: calc(100vh - 68px); display: grid; place-items: center; padding: 24px; }
+    .join-card {
+        width: min(100%, 560px);
+        display: grid;
+        gap: 18px;
+        padding: 48px 52px;
+        border: 2px solid #fff;
+        border-radius: 12px;
+        background: rgba(0, 0, 0, .34);
+        color: #fff;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, .24);
+    }
+    .join-card h1 { margin: 0 0 6px; font-size: 30px; text-align: center; }
+    .join-intro { margin: 0 0 8px; line-height: 1.45; text-align: center; }
+    .join-field { display: grid; gap: 8px; }
+    .join-field label { font-weight: 800; }
+    .join-field input {
+        width: 100%; min-height: 50px; padding: 0 14px; border: 1px solid rgba(255,255,255,.75);
+        border-radius: 8px; background: rgba(255,255,255,.94); color: #111;
+    }
+    .code-input { font-size: 24px; font-weight: 800; letter-spacing: .3em; text-align: center; }
+    .join-error { min-height: 20px; margin: 0; font-weight: 700; text-align: center; }
+    .start-button {
+        min-height: 50px; border: 1px solid #fff; border-radius: 8px; background: #fff;
+        color: #111; cursor: pointer; font-size: 17px; font-weight: 800;
+    }
+    .account-login {
+        justify-self: center; padding: 7px 13px; border: 1px solid rgba(255,255,255,.75);
+        border-radius: 999px; color: #fff; font-size: 12px; font-weight: 700; text-decoration: none;
+    }
+    .account-login:hover { background: rgba(255,255,255,.14); }
+    @media (max-width: 480px) { .join-card { padding: 34px 24px; } }
+{% endblock %}
+
+{% block content %}
+    <form class="join-card" method="post" action="{{ url_for('join_workshop') }}">
+        <h1>Join workshop</h1>
+        <p class="join-intro">Enter the code shown by your workshop manager.</p>
+        <div class="join-field">
+            <label for="accessCode">Workshop code</label>
+            <input class="code-input" id="accessCode" name="access_code" type="text" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" autocomplete="one-time-code" value="{{ (form_data or {}).get('access_code', '') }}" required>
+        </div>
+        <div class="join-field">
+            <label for="participantName">Your name</label>
+            <input id="participantName" name="participant_name" type="text" autocomplete="name" value="{{ (form_data or {}).get('participant_name', '') }}" required>
+        </div>
+        <p class="join-error" role="alert">{{ error or '' }}</p>
+        <button class="start-button" type="submit">Start</button>
+        <a class="account-login" href="{{ url_for('fingerprint_start') }}">Build your fingerprint</a>
+        <a class="account-login" href="{{ url_for('login') }}">Admin login</a>
+    </form>
+{% endblock %}

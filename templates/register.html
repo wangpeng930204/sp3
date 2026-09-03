@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+
+{% block title %}Register | Digital SPD{% endblock %}
+
+{% block styles %}
+    body {
+        min-height: 100vh;
+        background:
+            linear-gradient(rgba(0, 0, 0, 0.28), rgba(0, 0, 0, 0.28)),
+            url("/resources/base_background.jpg") center / cover no-repeat fixed;
+    }
+
+    .app-shell {
+        min-height: 100vh;
+        display: grid;
+        grid-template-rows: 1fr 68px;
+    }
+
+    .site-header,
+    .assistant-button {
+        display: none;
+    }
+
+    .site-main {
+        min-height: calc(100vh - 68px);
+        display: grid;
+        place-items: center;
+        padding: 24px;
+    }
+
+    .register-card {
+        width: min(100%, 420px);
+        min-height: 500px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 42px 38px;
+        background: rgba(0, 0, 0, 0.3);
+        border: 2px solid #FFFFFF;
+        border-radius: 8px;
+        color: #fff;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.24);
+    }
+
+    .register-card h2 {
+        margin: 0 0 32px;
+        color: #fff;
+        font-size: 30px;
+        line-height: 1.1;
+        text-align: center;
+    }
+
+    .field {
+        display: grid;
+        gap: 8px;
+        margin-bottom: 18px;
+    }
+
+    label {
+        color: #fff;
+        font-weight: 700;
+    }
+
+    input {
+        width: 100%;
+        min-height: 46px;
+        padding: 0 14px;
+        border: 1px solid rgba(255, 255, 255, 0.72);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.9);
+        color: #111;
+    }
+
+    input:focus {
+        border-color: #fff;
+        box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.22);
+        outline: 0;
+    }
+
+    .error {
+        min-height: 20px;
+        margin: 0 0 14px;
+        color: #fff;
+        font-weight: 700;
+        text-align: center;
+    }
+
+    .register-button {
+        width: 100%;
+        min-height: 48px;
+        border: 1px solid #fff;
+        border-radius: 8px;
+        background: #fff;
+        color: #111;
+        cursor: pointer;
+        font-weight: 800;
+        font-size: 17px;
+    }
+
+    .register-button:hover {
+        background: rgba(255, 255, 255, 0.86);
+    }
+
+    .login-note {
+        margin: 18px 0 0;
+        color: #fff;
+        font-size: 14px;
+        line-height: 1.45;
+        text-align: center;
+    }
+
+    .login-note a {
+        color: #fff;
+        font-weight: 800;
+        text-decoration: underline;
+        text-underline-offset: 3px;
+    }
+
+    @media (max-width: 480px) {
+        .site-main {
+            padding: 18px;
+        }
+
+        .register-card {
+            min-height: 470px;
+            padding: 34px 24px;
+        }
+    }
+{% endblock %}
+
+{% block content %}
+    <form id="registerForm" class="register-card" method="post" action="{{ url_for('register') }}">
+        <h2>Register</h2>
+
+        <div class="field">
+            <label for="username">Name</label>
+            <input id="username" name="username" type="text" autocomplete="name" placeholder="Your name" value="{{ form_data.username if form_data else '' }}">
+        </div>
+
+        <div class="field">
+            <label for="email">Email</label>
+            <input id="email" name="email" type="email" autocomplete="email" placeholder="name@example.com" value="{{ form_data.email if form_data else '' }}">
+        </div>
+
+        <div class="field">
+            <label for="password">Password</label>
+            <input id="password" name="password" type="password" autocomplete="new-password" placeholder="Create password">
+        </div>
+
+        <div class="field">
+            <label for="confirmPassword">Confirm Password</label>
+            <input id="confirmPassword" name="confirm_password" type="password" autocomplete="new-password" placeholder="Confirm password">
+        </div>
+
+        <p id="error" class="error" role="alert">{{ error or '' }}</p>
+        <button class="register-button" type="submit">REGISTER</button>
+        <p class="login-note">Already have an account? <a href="{{ url_for('login') }}">Login</a></p>
+    </form>
+{% endblock %}

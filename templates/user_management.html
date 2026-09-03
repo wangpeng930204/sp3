@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block title %}User Management | Digital SPD{% endblock %}
+{% block header_page_title %}User Management{% endblock %}
+
+{% block styles %}
+    .management-content {
+        min-height: calc(100vh - 136px);
+        display: grid;
+        place-items: center;
+        padding-top: 48px;
+        padding-bottom: 48px;
+    }
+
+    .management-card {
+        width: min(100%, 420px);
+        min-height: 500px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 42px 38px;
+        background: rgba(0, 0, 0, 0.3);
+        border: 2px solid #FFFFFF;
+        border-radius: 8px;
+        color: #fff;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.24);
+    }
+
+    .management-card h1 {
+        margin: 0 0 32px;
+        color: #fff;
+        font-size: 25px;
+        line-height: 1.1;
+        text-align: center;
+    }
+
+    .field {
+        display: grid;
+        gap: 8px;
+        margin-bottom: 18px;
+    }
+
+    label {
+        color: #fff;
+        font-weight: 700;
+    }
+
+    input {
+        width: 100%;
+        min-height: 46px;
+        padding: 0 14px;
+        border: 1px solid rgba(255, 255, 255, 0.72);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.9);
+        color: #111;
+    }
+
+    input:focus {
+        border-color: #fff;
+        box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.22);
+        outline: 0;
+    }
+
+    .form-message {
+        min-height: 20px;
+        margin: 0 0 14px;
+        color: #fff;
+        font-weight: 700;
+        text-align: center;
+    }
+
+    .actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+    }
+
+    .save-button,
+    .back-button {
+        min-height: 48px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid #fff;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 800;
+        font-size: 16px;
+        text-decoration: none;
+    }
+
+    .save-button {
+        background: #fff;
+        color: #111;
+    }
+
+    .save-button:hover {
+        background: rgba(255, 255, 255, 0.86);
+    }
+
+    .back-button {
+        background: rgba(255, 255, 255, 0.12);
+        color: #fff;
+    }
+
+    .back-button:hover {
+        background: rgba(255, 255, 255, 0.2);
+    }
+
+    @media (max-width: 480px) {
+        .management-content {
+            padding: 24px 18px;
+        }
+
+        .management-card {
+            min-height: 470px;
+            padding: 34px 24px;
+        }
+    }
+{% endblock %}
+
+{% block content %}
+    <section class="content management-content">
+        <form class="management-card" method="post" action="{{ url_for('user_management') }}">
+            <h1>User Management</h1>
+
+            <div class="field">
+                <label for="username">Name</label>
+                <input id="username" name="username" type="text" autocomplete="name" value="{{ user.username }}">
+            </div>
+
+            <div class="field">
+                <label for="password">Password</label>
+                <input id="password" name="password" type="password" autocomplete="new-password" placeholder="Leave blank to keep current password">
+            </div>
+
+            <div class="field">
+                <label for="confirmPassword">Confirm Password</label>
+                <input id="confirmPassword" name="confirm_password" type="password" autocomplete="new-password" placeholder="Confirm new password">
+            </div>
+
+            <p class="form-message" role="alert">{{ error or success or '' }}</p>
+
+            <div class="actions">
+                <button class="save-button" type="submit">SAVE</button>
+                <a class="back-button" href="{{ url_for('expert_dashboard') if user.role == 'admin' else url_for('user_workshop') }}">BACK</a>
+            </div>
+        </form>
+    </section>
+{% endblock %}

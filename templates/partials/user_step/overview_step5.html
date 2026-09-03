@@ -1,0 +1,36 @@
+<section class="step5-overview" aria-label="Step 5 scale definition overview" style="--scale-rows: {{ questions|length }};">
+    <h1 class="step5-overview-title">Overview Of LSC Scale Definitions</h1>
+    <div class="scale-definition-table-wrap">
+        <table class="scale-definition-table">
+            <thead>
+                <tr>
+                    <th class="lsc-scale-corner" scope="col">
+                        <span class="corner-lsc">LSC</span>
+                        <span class="corner-scales">Scales</span>
+                    </th>
+                    {% for value in [0, 1, 3, 6, 9] %}<th scope="col">SCI {{ value }}</th>{% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for strategy in questions %}
+                    {% set definitions = strategy_scale_definitions.get(strategy.id, {}) %}
+                    <tr>
+                        <th class="lsc-cell" scope="row"><a href="{{ question_url(strategy) }}">{{ strategy.question_text }}</a></th>
+                        {% for value in [0, 1, 3, 6, 9] %}
+                            <td{% if not definitions.get(value) %} class="definition-empty"{% endif %}>{{ definitions.get(value, '') or '—' }}</td>
+                        {% endfor %}
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="step5-overview-actions" aria-label="Step navigation">
+        <a class="question-nav-button" href="{{ question_url(questions[-1]) }}">Previous</a>
+        <span class="question-counter overview-counter">Overview</span>
+        {% if next_step %}
+            <a class="question-nav-button primary" href="{{ url_for('user_step', workshop_id=workshop.id, step=next_step) }}">Next</a>
+        {% else %}
+            <a class="question-nav-button primary" href="{{ url_for('user_workshop') }}">Next</a>
+        {% endif %}
+    </div>
+</section>

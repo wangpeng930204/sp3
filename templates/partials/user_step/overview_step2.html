@@ -1,0 +1,34 @@
+<section class="step2-overview" aria-label="Step 2 overview">
+    <div class="step2-stage-grid">
+        {% for stage in lifecycle_stages %}
+            <article class="step2-stage-summary">
+                <h2>{{ stage.name }}</h2>
+                <div class="stage-response-matrix">
+                    {% for polarity in ['advantage', 'disadvantage'] %}
+                        {% for category in ['social', 'economic', 'ecological'] %}
+                            {% for question in questions if question.lifecycle_stage_id == stage.id %}
+                                {% for response in classified_responses.get(question.id, []) %}
+                                    {% if response.polarity == polarity and response.category == category %}
+                                        <a class="stage-mini-response {{ category }}" href="{{ question_url(question) }}" title="{{ response.response_text }}">
+                                            <p>{{ response.response_text }}</p>
+                                            <img src="{{ url_for('resources', filename='AdvanSymbol.png' if polarity == 'advantage' else 'DisAdvaSymbol.png') }}" alt="{{ 'Strength' if polarity == 'advantage' else 'Weakness' }}">
+                                        </a>
+                                    {% endif %}
+                                {% endfor %}
+                            {% endfor %}
+                        {% endfor %}
+                    {% endfor %}
+                </div>
+            </article>
+        {% endfor %}
+    </div>
+    <div class="step2-overview-actions" aria-label="Step navigation">
+        <a class="question-nav-button" href="{{ question_url(questions[-1]) }}">Previous</a>
+        <span class="question-counter overview-counter">Overview</span>
+        {% if next_step %}
+            <a class="question-nav-button primary" href="{{ url_for('user_step', workshop_id=workshop.id, step=next_step) }}">Next</a>
+        {% else %}
+            <a class="question-nav-button primary" href="{{ url_for('user_workshop') }}">Next</a>
+        {% endif %}
+    </div>
+</section>

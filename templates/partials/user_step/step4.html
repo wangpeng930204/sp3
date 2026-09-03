@@ -1,0 +1,75 @@
+{% set detail = strategy_details.get(current_question.id) %}
+<section class="step4-workspace" aria-label="Step 4 strategy workspace">
+    <article class="step4-card">
+        <h2 class="step3-panel-title">Strategy {{ current_question_number }} · {{ current_question.stage_name }}</h2>
+        <p class="strategy-source {{ current_question.category }}">{{ current_question.question_text }}</p>
+        <form class="strategy-form" method="post" action="{{ url_for('save_strategy_details', strategy_id=current_question.id) }}">
+            <div class="strategy-fields">
+                <label class="strategy-field">
+                    <span class="response-label">LSC</span>
+                    <textarea class="response-input" name="lsc" placeholder="Enter LSC...">{{ detail.lsc if detail else '' }}</textarea>
+                </label>
+                <label class="strategy-field">
+                    <span class="response-label">Measurement</span>
+                    <textarea class="response-input" name="measurement" placeholder="Enter measurement...">{{ detail.measurement if detail else '' }}</textarea>
+                </label>
+                <label class="strategy-field">
+                    <span class="response-label">Comments</span>
+                    <textarea class="response-input" name="comments" placeholder="Enter comments...">{{ detail.comments if detail else '' }}</textarea>
+                </label>
+            </div>
+
+            <div class="strategy-classifications">
+                <div class="strategy-plate-group">
+                    <span class="strategy-plate-title">Lifecycle stage</span>
+                    <div class="strategy-stage-grid" role="radiogroup" aria-label="Lifecycle stage classification">
+                        {% for stage in lifecycle_stages %}
+                            <label class="strategy-choice">
+                                <input type="radio" name="lifecycle_stage_id" value="{{ stage.id }}" required
+                                       {% if (detail and detail.lifecycle_stage_id == stage.id) or (not detail and current_question.lifecycle_stage_id == stage.id) %}checked{% endif %}>
+                                <span>{{ stage.name }}</span>
+                            </label>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="strategy-plate-group">
+                    <span class="strategy-plate-title">Classification</span>
+                    <div class="strategy-category-grid" role="radiogroup" aria-label="Sustainability classification">
+                        {% for category, category_label in [('social', 'Social'), ('economic', 'Economic'), ('ecological', 'Ecological')] %}
+                            <label class="strategy-choice {{ category }}">
+                                <input type="radio" name="category" value="{{ category }}" required
+                                       {% if (detail and detail.category == category) or (not detail and current_question.category == category) %}checked{% endif %}>
+                                <span>{{ category_label }}</span>
+                            </label>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="strategy-form-footer">
+                {% if request.args.get('saved') %}
+                    <span class="saved-message" role="status">Strategy details saved</span>
+                {% elif request.args.get('classification_required') %}
+                    <span class="saved-message" role="alert">Select both classifications</span>
+                {% endif %}
+                <button class="save-response" type="submit">Save response</button>
+            </div>
+        </form>
+    </article>
+</section>
+
+<div class="workspace-actions" aria-label="Strategy navigation">
+    {% if previous_question %}
+        <a class="question-nav-button" href="{{ question_url(previous_question) }}">Previous</a>
+    {% elif previous_step %}
+        <a class="question-nav-button" href="{{ url_for('user_step', workshop_id=workshop.id, step=previous_step, view='overview') }}">Previous</a>
+    {% else %}
+        <a class="question-nav-button" href="{{ url_for('user_workshop') }}">Previous</a>
+    {% endif %}
+    <span class="question-counter">{{ current_question_number }} / {{ questions|length }}</span>
+    {% if next_question %}
+        <a class="question-nav-button primary" href="{{ question_url(next_question) }}">Next</a>
+    {% else %}
+        <a class="question-nav-button primary" href="{{ url_for('user_step', workshop_id=workshop.id, step=current_step, view='overview') }}">Next</a>
+    {% endif %}
+</div>

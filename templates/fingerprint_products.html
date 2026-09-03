@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}Select Product | Digital SPD{% endblock %}
+
+{% block styles %}
+    body {
+        min-height: 100vh;
+        background: linear-gradient(rgba(0, 0, 0, .28), rgba(0, 0, 0, .28)),
+                    url("/resources/base_background.jpg") center / cover no-repeat fixed;
+    }
+    .app-shell { min-height: 100vh; grid-template-rows: 1fr 68px; }
+    .site-header, .assistant-button { display: none; }
+    .site-main { min-height: calc(100vh - 68px); display: grid; place-items: center; padding: 24px; }
+    .product-select-card {
+        width: min(100%, 720px); display: grid; gap: 18px; padding: 38px 42px;
+        border: 2px solid #fff; border-radius: 12px; background: rgba(0,0,0,.38);
+        color: #fff; box-shadow: 0 24px 70px rgba(0,0,0,.24);
+    }
+    .product-select-card h1 { margin: 0; font-size: 30px; text-align: center; }
+    .product-select-intro { margin: 0; line-height: 1.45; text-align: center; }
+    .product-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+    .product-option { position: relative; cursor: pointer; }
+    .product-option input { position: absolute; opacity: 0; pointer-events: none; }
+    .product-option span {
+        min-height: 72px; display: grid; place-items: center; padding: 12px;
+        border: 2px solid rgba(255,255,255,.7); border-radius: 10px;
+        background: rgba(255,255,255,.92); color: #111; font-weight: 800; text-align: center;
+    }
+    .product-option input:checked + span { border-color: #65c86d; background: #e8f7e8; box-shadow: 0 0 0 3px rgba(101,200,109,.3); }
+    .product-option input:focus-visible + span { outline: 3px solid #fff; outline-offset: 2px; }
+    .product-select-error { min-height: 20px; margin: 0; color: #fff; font-weight: 800; text-align: center; }
+    .product-select-submit { min-height: 48px; border: 1px solid #fff; border-radius: 8px; background: #fff; color: #111; cursor: pointer; font-size: 16px; font-weight: 800; }
+    .product-select-back { justify-self: center; color: #fff; font-size: 12px; font-weight: 800; }
+    .no-products { padding: 18px; border-radius: 9px; background: rgba(255,255,255,.92); color: #111; text-align: center; }
+    @media (max-width: 520px) { .product-select-card { padding: 30px 20px; } }
+{% endblock %}
+
+{% block content %}
+    <form class="product-select-card" method="post" action="{{ url_for('fingerprint_select_product') }}">
+        <h1>Select a product</h1>
+        <p class="product-select-intro">Choose the product you want to evaluate for {{ workshop.title }}.</p>
+        {% if products %}
+            <div class="product-options" role="radiogroup" aria-label="Products">
+                {% for product in products %}
+                    <label class="product-option">
+                        <input type="radio" name="product_id" value="{{ product.id }}" required>
+                        <span>{{ product.name }}</span>
+                    </label>
+                {% endfor %}
+            </div>
+            <p class="product-select-error" role="alert">{{ error or '' }}</p>
+            <button class="product-select-submit" type="submit">Start fingerprint</button>
+        {% else %}
+            <div class="no-products">No products have been added by the workshop manager yet.</div>
+        {% endif %}
+        <a class="product-select-back" href="{{ url_for('fingerprint_start') }}">Use another name or code</a>
+    </form>
+{% endblock %}

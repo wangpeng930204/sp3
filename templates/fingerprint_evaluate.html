@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block title %}{{ respondent.title }} Fingerprint | Digital SPD{% endblock %}
+{% block header_page_title %}Fingerprint{% endblock %}
+{% block header_user_name %}{{ respondent.display_name }}{% endblock %}
+{% block head_links %}<link rel="stylesheet" href="{{ url_for('static', filename='user_step.css') }}">{% endblock %}
+
+{% block styles %}
+    .fingerprint-page { width: min(100%, 1440px); padding-top: 22px; padding-bottom: 32px; }
+    .fingerprint-heading { margin-bottom: 16px; }
+    .fingerprint-heading h1 { margin: 0; font-size: clamp(22px, 3vw, 34px); }
+    .fingerprint-form { display: grid; gap: 12px; }
+    .fingerprint-card { padding: 16px 18px; }
+    .fingerprint-card.social { border-left: 6px solid #eab84e; }
+    .fingerprint-card.economic { border-left: 6px solid #6497bd; }
+    .fingerprint-card.ecological { border-left: 6px solid #72ae68; }
+    .fingerprint-card h2 { margin: 0; font-size: 16px; line-height: 1.3; }
+    .likert-scale { display: grid; grid-template-columns: repeat(10, minmax(42px, 1fr)); gap: 6px; }
+    .likert-option { position: relative; cursor: pointer; }
+    .likert-option input { position: absolute; opacity: 0; pointer-events: none; }
+    .likert-value {
+        min-height: 42px; display: grid; place-items: center; border: 1px solid #aeb5ad;
+        border-radius: 9px; background: #fff; font-weight: 800;
+    }
+    .likert-option input:checked + .likert-value { border-color: #08739d; background: #08739d; color: #fff; box-shadow: 0 0 0 3px rgba(8,115,157,.18); }
+    .likert-option input:focus-visible + .likert-value { outline: 2px solid #173f72; outline-offset: 2px; }
+    .scale-definitions { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; color: #52606d; font-size: 11px; }
+    .scale-definitions span { flex: 1 1 180px; }
+    .fingerprint-actions {
+        position: sticky; z-index: 5; bottom: 10px; display: flex; justify-content: flex-end; align-items: center;
+        gap: 12px; padding: 10px; border-radius: 12px; background: rgba(255,255,255,.94); box-shadow: 0 6px 20px rgba(0,0,0,.14);
+    }
+    .fingerprint-saved { color: #173f72; font-size: 13px; font-weight: 800; }
+    .fingerprint-save { min-height: 40px; padding: 7px 16px; border: 0; border-radius: 8px; background: #245a96; color: #fff; cursor: pointer; font-weight: 800; }
+    .fingerprint-empty { padding: 50px 24px; text-align: center; }
+    .evaluation-card { min-height: clamp(520px, calc(100vh - 205px), 720px); padding: clamp(20px, 3vw, 34px); }
+    .evaluation-scale {
+        position: relative; display: grid; grid-template-columns: repeat(10, minmax(46px, 1fr));
+        align-items: start; margin-top: 8px;
+    }
+    .evaluation-scale::before { content: ""; position: absolute; top: 111px; left: 5%; right: 5%; height: 2px; background: #333; }
+    .evaluation-point {
+        position: relative; z-index: 1; display: grid; grid-template-rows: 82px 58px 82px;
+        justify-items: center; align-items: center; min-height: 222px; cursor: pointer;
+    }
+    .evaluation-point input { position: absolute; opacity: 0; pointer-events: none; }
+    .evaluation-number {
+        grid-row: 2; width: 40px; height: 40px; display: grid; place-items: center;
+        border-radius: 50%; background: #5d5d5d; color: #fff; font-size: 18px; font-weight: 800;
+    }
+    .evaluation-point.has-definition .evaluation-number { width: 54px; height: 54px; font-size: 22px; }
+    .evaluation-point input:checked + .evaluation-number { background: #08739d; transform: scale(1.12); box-shadow: 0 0 0 4px rgba(8,115,157,.18); }
+    .evaluation-definition {
+        grid-row: 3; align-self: start; width: min(150px, 94%); max-height: 76px; overflow: auto; padding: 8px;
+        border: 1px solid #e5e7eb; border-radius: 10px; background: #f9fafb;
+        color: #59636e; font-size: 10px; line-height: 1.3;
+    }
+    .evaluation-point.definition-top .evaluation-definition { grid-row: 1; align-self: end; }
+    .rating-result { margin: 8px 0 14px; color: #52606d; font-size: 14px; font-weight: 700; text-align: center; }
+    .rating-result output { color: #08739d; font-size: 18px; font-weight: 900; }
+    .evaluation-inputs { width: min(100%, 900px); display: grid; grid-template-columns: repeat(2, minmax(260px, 1fr)); gap: 16px; margin: 0 auto; }
+    .confidence-field, .comments-field { display: grid; gap: 8px; padding: 14px; border-radius: 12px; background: #f2f2f7; font-size: 13px; font-weight: 800; }
+    .confidence-row { display: grid; grid-template-columns: 1fr 52px; align-items: center; gap: 10px; }
+    .confidence-slider { width: 100%; accent-color: #08739d; }
+    .confidence-value { padding: 5px; border-radius: 7px; background: #fff; text-align: center; }
+    .comments-field textarea { width: 100%; min-height: 62px; padding: 10px; border: 1px solid #c9cdd2; border-radius: 8px; resize: vertical; font: inherit; font-weight: 400; }
+    .evaluation-error { margin: 10px 0 0; color: #b42318; font-size: 13px; font-weight: 800; }
+    .evaluation-navigation { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; }
+    .evaluation-navigation .disabled { visibility: hidden; }
+    @media (max-width: 700px) {
+        .likert-scale { grid-template-columns: repeat(5, 1fr); }
+        .evaluation-card { overflow-x: auto; }
+        .evaluation-scale { min-width: 760px; }
+        .evaluation-inputs { grid-template-columns: 1fr; min-width: 0; }
+    }
+{% endblock %}
+
+{% block content %}
+<section class="content fingerprint-page">
+    <header class="fingerprint-heading">
+        <h1>{{ product.name }}{% if current_strategy %} - {{ current_strategy.name }}{% endif %}</h1>
+    </header>
+
+    {% if current_strategy %}
+        {% set strategy_definitions = definitions.get(current_strategy.id, {}) %}
+        {% set saved_rating = rating_details.get(current_strategy.id) %}
+        <form method="post" action="{{ url_for('fingerprint_evaluate') }}">
+            <input type="hidden" name="strategy_id" value="{{ current_strategy.id }}">
+            <article class="panel-card evaluation-card fingerprint-card {{ current_strategy.category }}">
+                <div class="evaluation-scale" role="radiogroup" aria-label="Rating for {{ current_strategy.name }}">
+                    {% for value in range(10) %}
+                        <label class="evaluation-point{% if strategy_definitions.get(value) %} has-definition{% if value % 2 == 1 %} definition-top{% endif %}{% endif %}"{% if strategy_definitions.get(value) %} title="{{ strategy_definitions.get(value) }}"{% endif %}>
+                            <input type="radio" name="scale_value" value="{{ value }}" required{% if saved_rating and saved_rating.scale_value == value %} checked{% endif %}>
+                            <span class="evaluation-number">{{ value }}</span>
+                            {% if strategy_definitions.get(value) %}<span class="evaluation-definition">{{ strategy_definitions.get(value) }}</span>{% endif %}
+                        </label>
+                    {% endfor %}
+                </div>
+                <p class="rating-result" aria-live="polite">Your rating is: <output id="ratingValue">{{ saved_rating.scale_value if saved_rating else '—' }}</output></p>
+                <div class="evaluation-inputs">
+                    <label class="confidence-field">
+                        How confident are you in this rating?
+                        <span class="confidence-row">
+                            <input class="confidence-slider" id="confidenceSlider" type="range" name="confidence" min="0" max="100" step="1" value="{{ saved_rating.confidence if saved_rating else 50 }}">
+                            <output class="confidence-value" id="confidenceValue" for="confidenceSlider">{{ saved_rating.confidence if saved_rating else 50 }}%</output>
+                        </span>
+                    </label>
+                    <label class="comments-field">
+                        Comments
+                        <textarea name="comments" maxlength="2000" placeholder="Add context for your rating (optional)...">{{ saved_rating.comments if saved_rating else '' }}</textarea>
+                    </label>
+                </div>
+                {% if request.args.get('error') %}<p class="evaluation-error" role="alert">{{ request.args.get('error') }}</p>{% endif %}
+                <div class="evaluation-navigation">
+                    {% if previous_strategy %}
+                        <a class="question-nav-button" href="{{ url_for('fingerprint_evaluate', strategy_id=previous_strategy.id) }}">Previous</a>
+                    {% else %}<span class="question-nav-button disabled">Previous</span>{% endif %}
+                    <span class="question-counter">{{ current_index + 1 }} / {{ strategies|length }}</span>
+                    <button class="question-nav-button primary" type="submit">{{ 'Next' if next_strategy else 'Finish' }}</button>
+                </div>
+            </article>
+        </form>
+        <script>
+            const confidenceSlider = document.getElementById('confidenceSlider');
+            const confidenceValue = document.getElementById('confidenceValue');
+            const ratingValue = document.getElementById('ratingValue');
+            confidenceSlider?.addEventListener('input', () => { confidenceValue.value = `${confidenceSlider.value}%`; });
+            document.querySelectorAll('input[name="scale_value"]').forEach((input) => {
+                input.addEventListener('change', () => { ratingValue.value = input.value; });
+            });
+        </script>
+    {% else %}
+        <div class="panel-card fingerprint-empty">No Step 5 LSC scale definitions have been created for this workshop yet.</div>
+    {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,63 @@
+{% set completion = namespace(count=0) %}
+{% for question in questions %}
+    {% if question.id in answered_question_ids %}{% set completion.count = completion.count + 1 %}{% endif %}
+{% endfor %}
+<section class="overview-panel step{{ current_step }}-overview-panel" aria-label="Question overview">
+    <p class="overview-status">{{ completion.count }} of {{ questions|length }} questions answered</p>
+    <div class="overview-grid">
+        {% for question in questions %}
+            <a class="overview-note{% if question.id in answered_question_ids %} answered{% endif %}{% if current_question and question.id == current_question.id %} current-question{% endif %}"
+               href="{{ question_url(question) }}">
+                <p class="note-question">{{ question.stage_name if current_step == 3 else question.question_text }}</p>
+                {% if current_step == 5 and strategy_scale_choices.get(question.id) is not none %}
+                    {% set selected_scale = strategy_scale_choices.get(question.id) %}
+                    <div class="strategy-detail-summary">
+                        <p><strong>Selected scale</strong> {{ selected_scale }}</p>
+                        <p><strong>Definition</strong> {{ strategy_scale_definitions.get(question.id, {}).get(selected_scale, '') or '—' }}</p>
+                    </div>
+                {% elif current_step == 5 %}
+                    <p class="overview-answer unanswered"><strong>Scale</strong>Not completed yet</p>
+                {% elif current_step == 4 and strategy_details.get(question.id) %}
+                    {% set detail = strategy_details.get(question.id) %}
+                    <div class="strategy-detail-summary">
+                        <p><strong>LSC</strong> {{ detail.lsc or '—' }}</p>
+                        <p><strong>Measurement</strong> {{ detail.measurement or '—' }}</p>
+                        <p><strong>Comments</strong> {{ detail.comments or '—' }}</p>
+                    </div>
+                {% elif current_step == 4 %}
+                    <p class="overview-answer unanswered"><strong>Strategy details</strong>Not completed yet</p>
+                {% elif current_step == 3 and solution_responses.get(question.id) %}
+                    <div class="overview-solution-list">{{ solution_cards(solution_responses.get(question.id, [])) }}</div>
+                {% elif current_step == 3 %}
+                    <p class="overview-answer unanswered"><strong>Your solutions</strong>No solutions yet</p>
+                {% elif current_step == 2 and classified_responses.get(question.id) %}
+                    <div class="overview-classified-list">{{ classified_cards(classified_responses.get(question.id, [])) }}</div>
+                {% else %}
+                    {% set answer = saved_responses.get(question.id, '')|trim %}
+                    {% if answer %}
+                        {% if current_step == 1 %}
+                            {% set answer_words = answer.split() %}
+                            <p class="overview-answer step1-answer-preview">
+                                <span class="answer-preview-text">{{ answer_words[:60]|join(' ') }}{% if answer_words|length > 60 %}&hellip;{% endif %}</span>
+                                <span class="answer-focus-text">{{ answer }}</span>
+                            </p>
+                        {% else %}
+                            <p class="overview-answer"><strong>Your answer</strong>{{ answer }}</p>
+                        {% endif %}
+                    {% else %}
+                        <p class="overview-answer unanswered">{% if current_step != 1 %}<strong>Your answer</strong>{% endif %}Not answered yet</p>
+                    {% endif %}
+                {% endif %}
+            </a>
+        {% endfor %}
+    </div>
+    <div class="overview-actions" aria-label="Step navigation">
+        <a class="question-nav-button" href="{{ question_url(questions[-1]) }}">Previous</a>
+        <span class="question-counter overview-counter">Overview</span>
+        {% if next_step %}
+            <a class="question-nav-button primary" href="{{ url_for('user_step', workshop_id=workshop.id, step=next_step) }}">Next</a>
+        {% else %}
+            <a class="question-nav-button primary" href="{{ url_for('user_workshop') }}">Next</a>
+        {% endif %}
+    </div>
+</section>

@@ -1,0 +1,1398 @@
+{% extends "base.html" %}
+
+{% block title %}Workshop Management | Digital SPD{% endblock %}
+{% block header_page_title %}Workshop Management{% endblock %}
+
+{% block styles %}
+    .expert-content {
+        width: 100%;
+        height: calc(100vh - 136px);
+        min-height: 520px;
+        display: grid;
+        padding: 10px 12px 12px;
+        overflow: hidden;
+    }
+
+    .workshop-layout {
+        height: 100%;
+        min-height: 0;
+        display: grid;
+        grid-template-columns: minmax(300px, 1.5fr) minmax(300px, 2.5fr) minmax(520px, 5.5fr);
+        gap: 12px;
+        align-items: stretch;
+    }
+
+    .history-card,
+    .management-card,
+    .sticky-card {
+        min-height: 0;
+        padding: 12px;
+        overflow: hidden;
+    }
+
+    .history-card {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .history-list {
+        min-height: 0;
+        display: grid;
+        align-content: start;
+        gap: 12px;
+        margin: 0 0 18px;
+        overflow: auto;
+    }
+
+    .workshop-item {
+        padding: 12px;
+        border: 1px solid #ddd1ca;
+        border-radius: 8px;
+        background: #fff;
+        cursor: pointer;
+    }
+
+    .workshop-item.selected {
+        border-color: var(--green);
+        box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.14);
+    }
+
+    .workshop-item.published { background: #f5fbf4; }
+
+    .workshop-item:focus {
+        border-color: var(--green);
+        box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.18);
+        outline: 0;
+    }
+
+    .workshop-row {
+        display: grid;
+        gap: 8px;
+    }
+
+    .workshop-name {
+        margin: 0;
+        overflow: hidden;
+        font-size: 16px;
+        font-weight: 800;
+        line-height: 1.25;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .workshop-name-form { min-width: 0; margin: 0; }
+    .workshop-name-input {
+        width: 100%; min-height: 30px; padding: 3px 5px; border: 1px solid transparent;
+        border-radius: 6px; background: transparent; font-size: 16px; font-weight: 800;
+        line-height: 1.25; text-overflow: ellipsis;
+    }
+    .workshop-name-input:hover { border-color: #d5cbc5; background: rgba(255,255,255,.7); }
+    .workshop-name-input:focus { border-color: var(--green); background: #fff; outline: none; }
+
+    .workshop-time {
+        margin: 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.35;
+    }
+
+    .workshop-actions {
+        display: inline-grid;
+        grid-template-columns: repeat(2, 55px);
+        gap: 6px;
+        align-items: center;
+    }
+    .workshop-actions form { margin: 0; }
+    .workshop-actions form,
+    .workshop-actions .publish-switch,
+    .workshop-actions .delete-button { width: 100%; min-width: 0; font-size: 11px; }
+    .workshop-actions .publish-switch,
+    .workshop-actions .delete-button {
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+    }
+    .workshop-actions .delete-button { border-radius: 999px; }
+    .workshop-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+    .empty-history {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.45;
+    }
+
+    .history-footer {
+        margin-top: auto;
+    }
+
+    .text-button,
+    .delete-button,
+    .new-button,
+    .save-button {
+        min-height: 34px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 800;
+        font-size: 13px;
+    }
+
+    .text-button {
+        min-width: 50px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid #111;
+        background: #fff;
+        color: #000;
+        text-decoration: none;
+    }
+
+    .publish-switch {
+        min-height: 34px;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 6px;
+        border: 1px solid #aeb5ad;
+        border-radius: 999px;
+        background: #fff;
+        color: #28322a;
+        cursor: pointer;
+        font-size: 11px;
+        font-weight: 800;
+    }
+    .publish-switch::before {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: #aeb5ad;
+        content: "";
+        transition: transform 160ms ease, background 160ms ease;
+    }
+    .publish-switch.is-on { border-color: #2f7435; background: #3f9147; color: #fff; }
+    .publish-switch.is-on::before { background: #fff; transform: translateX(3px); }
+    .publish-switch:hover { border-color: #3f9147; }
+
+    .text-button:hover,
+    .new-button:hover,
+    .save-button:hover {
+        background: #f0f0f0;
+    }
+
+    .delete-button {
+        min-width: 58px;
+        border: 1px solid #9e2f25;
+        background: #fff;
+        color: #9e2f25;
+    }
+
+    .delete-button:hover {
+        background: #faebe9;
+    }
+
+    .new-button {
+        width: 100%;
+        min-height: 46px;
+        border: 1.5px solid #111;
+        background: #fff;
+        color: #000;
+        font-size: 16px;
+    }
+
+    .management-card {
+        height: 100%;
+        display: grid;
+        grid-template-rows: auto 1fr;
+        gap: 12px;
+    }
+
+    .pairing-code-bar {
+        min-height: 58px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        padding: 10px 16px;
+        border: 1px solid #d7cbc5;
+        border-radius: 12px;
+        background: #fff;
+    }
+    .pairing-code-label { color: var(--muted); font-size: 13px; font-weight: 700; }
+    .pairing-code-value { color: #173f72; font-size: 28px; font-weight: 900; letter-spacing: .22em; }
+    .pairing-code-empty { color: var(--muted); font-size: 13px; }
+    .pairing-code-bar.published { border-color: #3f9147; background: #3f9147; }
+    .pairing-code-bar.published .pairing-code-label,
+    .pairing-code-bar.published .pairing-code-value { color: #fff; }
+
+    .sticky-card {
+        height: 100%;
+        display: grid;
+        padding: 10px;
+    }
+
+    .sticky-workspace {
+        --sticky-zoom: 1;
+        --sticky-pan-x: 0px;
+        --sticky-pan-y: 0px;
+        position: relative;
+        min-height: 100%;
+        border: 1px solid #dccfc6;
+        border-radius: 8px;
+        background: #fffdf1;
+        box-shadow: inset 0 0 0 6px rgba(255, 255, 255, 0.34);
+        overflow: hidden;
+        padding: 72px 18px 18px;
+        cursor: grab;
+        user-select: none;
+    }
+
+    .sticky-workspace.is-panning {
+        cursor: grabbing;
+    }
+
+    .workspace-tools {
+        position: absolute;
+        top: 18px;
+        right: 18px;
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        z-index: 1;
+    }
+
+    .tool-icon-button {
+        width: 42px;
+        height: 42px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(17, 17, 17, 0.22);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.78);
+        cursor: pointer;
+        box-shadow: 0 8px 18px rgba(0, 0, 0, 0.1);
+    }
+
+    .tool-icon-button:hover {
+        background: #fff;
+    }
+
+    .tool-icon-button img {
+        width: 24px;
+        height: 24px;
+        object-fit: contain;
+    }
+
+    .zoom-button {
+        width: 42px;
+        height: 42px;
+        border: 1px solid rgba(17, 17, 17, 0.22);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.78);
+        cursor: pointer;
+        font-size: 24px;
+        font-weight: 800;
+        line-height: 1;
+        box-shadow: 0 8px 18px rgba(0, 0, 0, 0.1);
+    }
+
+    .zoom-button:hover {
+        background: #fff;
+    }
+
+    .sticky-content {
+        width: 1180px;
+        min-height: 100%;
+        display: grid;
+        gap: 18px;
+        transform: translate(var(--sticky-pan-x), var(--sticky-pan-y)) scale(var(--sticky-zoom));
+        transform-origin: top left;
+    }
+
+    .sticky-step {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 240px));
+        gap: 12px;
+    }
+
+    .sticky-step-title {
+        grid-column: 1 / -1;
+        margin: 0;
+        font-size: 22px;
+        line-height: 1.2;
+    }
+
+    .sticky-stage {
+        display: contents;
+    }
+
+    .sticky-stage-title {
+        display: none;
+    }
+
+    .sticky-note-list {
+        display: contents;
+    }
+
+    .sticky-note-item {
+        position: relative;
+        min-height: 150px;
+        padding: 18px;
+        border: 1px solid rgba(0, 0, 0, 0.06);
+        border-radius: 14px;
+        background: #f3eae5;
+        box-shadow: 0 7px 16px rgba(0, 0, 0, 0.09);
+        cursor: pointer;
+        user-select: text;
+        transition: width 180ms ease, min-height 180ms ease, box-shadow 180ms ease, opacity 180ms ease;
+    }
+    .sticky-note-item:not(.focused):hover,
+    .sticky-note-item:not(.focused):focus-visible {
+        z-index: 5;
+        transform: scale(1.1);
+        box-shadow: 0 16px 34px rgba(0, 0, 0, .18);
+        outline: none;
+    }
+    .sticky-note-item.focused {
+        width: min(420px, 68vw);
+        min-height: 320px;
+        grid-column: span 2;
+        z-index: 3;
+        cursor: default;
+        box-shadow: 0 18px 42px rgba(0, 0, 0, .18);
+    }
+    .sticky-note-item.floating-note {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        z-index: 8;
+        transform: translate(-50%, -50%);
+    }
+    .sticky-note-placeholder { min-height: 150px; }
+    .sticky-workspace.has-focused-note .sticky-note-item:not(.focused) { opacity: .5; }
+    .sticky-workspace.overview-mode .sticky-note-item { width: auto; min-height: 150px; grid-column: span 1; opacity: 1; }
+
+    .sticky-question {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 800;
+        line-height: 1.32;
+    }
+
+    .sticky-guidance {
+        display: none;
+        margin: 10px 0 0;
+        color: #3f3f3f;
+        font-size: 13px;
+        line-height: 1.35;
+        white-space: pre-wrap;
+    }
+    .sticky-note-item:not(.focused):hover .sticky-guidance,
+    .sticky-note-item:not(.focused):focus-visible .sticky-guidance {
+        display: block;
+        overflow: visible;
+    }
+
+    .sticky-edit-form { display: none; gap: 12px; padding-top: 16px; }
+    .sticky-note-item.focused .sticky-edit-form { display: grid; }
+    .sticky-edit-form input,
+    .sticky-edit-form textarea { background: rgba(255, 255, 255, 0.68); }
+    .sticky-edit-form textarea { min-height: 180px; }
+
+    .sticky-preview { display: block; padding-right: 24px; }
+    .sticky-note-item.focused .sticky-preview { display: none; }
+    .sticky-workspace.overview-mode .sticky-preview { display: block; }
+    .sticky-workspace.overview-mode .sticky-edit-form { display: none; }
+    .sticky-workspace.overview-mode .sticky-note-item.floating-note {
+        width: min(420px, 68vw); min-height: 320px; opacity: 1;
+    }
+    .sticky-workspace.overview-mode .floating-note .sticky-preview { display: none; }
+    .sticky-workspace.overview-mode .floating-note .sticky-edit-form { display: grid; }
+    .sticky-delete-form { position: absolute; top: 8px; right: 8px; z-index: 4; }
+    .sticky-note-delete {
+        width: 30px; height: 30px; border: 0; border-radius: 50%; background: transparent;
+        color: #8f2d25; cursor: pointer; font-size: 22px; font-weight: 800; line-height: 1;
+    }
+    .sticky-note-delete:hover { background: rgba(180, 35, 24, .1); }
+    .sticky-note-add {
+        position: absolute; right: 9px; bottom: 9px; z-index: 4;
+        width: 32px; height: 32px; border: 1px solid rgba(23, 63, 114, .28); border-radius: 50%;
+        background: rgba(255, 255, 255, .72); color: #173f72; cursor: pointer;
+        font-size: 22px; font-weight: 800; line-height: 1;
+    }
+    .sticky-note-add:hover { background: #fff; border-color: #173f72; }
+    .autosave-status { min-height: 18px; color: #356139; font-size: 12px; font-weight: 700; text-align: right; }
+
+    .sticky-empty {
+        min-height: 100%;
+        display: grid;
+        place-items: center;
+        color: var(--muted);
+        text-align: center;
+        font-size: 18px;
+        line-height: 1.4;
+    }
+
+    .step-tabs {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .step-tab {
+        min-height: 40px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 18px;
+        border: 1px solid #cfc6bf;
+        border-radius: 8px;
+        background: #fff;
+        color: #111;
+        font-weight: 800;
+        text-decoration: none;
+    }
+
+    .step-tab.active {
+        border-color: #111;
+        box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.08);
+    }
+
+    .step-tab.settings-tab {
+        background: #e7f3e4;
+        border-color: #7bb576;
+        color: #174c19;
+    }
+
+    .management-body {
+        min-height: 0;
+        overflow: auto;
+        padding-right: 4px;
+    }
+
+    .stage-list,
+    .stage-sections,
+    .question-list {
+        display: grid;
+        gap: 14px;
+    }
+
+    .stage-row,
+    .stage-section,
+    .question-detail,
+    .description-card {
+        border: 1px solid #ddd1ca;
+        border-radius: 8px;
+        background: #fff;
+        padding: 14px;
+    }
+
+    .stage-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 10px;
+        align-items: center;
+    }
+
+    .stage-form,
+    .add-form,
+    .question-form {
+        display: grid;
+        gap: 10px;
+    }
+
+    .stage-form {
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        align-items: center;
+    }
+
+    .add-form {
+        grid-template-columns: minmax(0, 1fr) auto;
+        margin-top: 16px;
+    }
+
+    .field-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) auto;
+        gap: 10px;
+        align-items: start;
+    }
+
+    input,
+    textarea,
+    select {
+        width: 100%;
+        min-height: 42px;
+        padding: 0 12px;
+        border: 1px solid #bfc5cc;
+        border-radius: 8px;
+        background: #fff;
+        color: var(--ink);
+    }
+
+    textarea {
+        min-height: 84px;
+        padding-top: 10px;
+        resize: vertical;
+    }
+
+    input:focus,
+    textarea:focus,
+    select:focus {
+        border-color: var(--green);
+        box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.18);
+        outline: 0;
+    }
+
+    .save-button {
+        min-width: 72px;
+        border: 1px solid #111;
+        background: #fff;
+        color: #000;
+    }
+
+    .stage-section h2 {
+        margin: 0 0 12px;
+        font-size: 20px;
+    }
+
+    .question-item {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        gap: 8px;
+        align-items: center;
+        padding: 10px 0;
+        border-top: 1px solid #ece4df;
+    }
+
+    .question-text {
+        margin: 0;
+        overflow: hidden;
+        font-weight: 700;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .question-detail {
+        margin-top: 16px;
+    }
+
+    .description-card {
+        margin-bottom: 16px;
+    }
+
+    .description-card h2 {
+        margin: 0 0 10px;
+        font-size: 20px;
+    }
+
+    .description-card textarea {
+        min-height: 120px;
+    }
+
+    .settings-simple { display: grid; gap: 10px; }
+    .settings-simple .description-card { margin: 0; padding: 10px; }
+    .settings-step-picker { display: flex; flex-wrap: nowrap; gap: 5px; margin-bottom: 8px; }
+    .settings-step-button {
+        min-width: 0; min-height: 30px; flex: 1; padding: 0 4px; border: 1px solid #cfc6bf; border-radius: 7px;
+        background: #fff; cursor: pointer; font-size: 11px; font-weight: 800;
+    }
+    .settings-step-button.active { border-color: #173f72; background: #245a96; color: #fff; }
+    .settings-description-form { display: grid; gap: 7px; }
+    .stage-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 12px; }
+    .stage-chip { padding: 6px 9px; border-radius: 999px; background: #f3eae5; font-size: 12px; font-weight: 700; }
+    .sortable-stage-list {
+        max-height: 112px; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 5px;
+        margin-bottom: 7px; padding: 1px 3px 3px 1px; overflow-y: auto;
+    }
+    .sortable-stage-item {
+        display: inline-grid; grid-template-columns: auto auto auto; gap: 4px; align-items: center;
+        min-height: 30px; padding: 2px 4px; border: 1px solid #cfc6bf; border-radius: 7px; background: #fff;
+    }
+    .sortable-stage-item.is-dragging { opacity: .45; }
+    .sortable-stage-item.editing { border-color: #173f72; box-shadow: 0 0 0 2px rgba(36, 90, 150, .14); }
+    .stage-drag-handle {
+        border: 0; background: transparent; color: #66727c; cursor: grab; font-size: 20px;
+        line-height: 1; letter-spacing: -3px;
+    }
+    .stage-drag-handle:active { cursor: grabbing; }
+    .stage-name-label { padding: 0 4px; cursor: text; font-size: 11px; font-weight: 800; white-space: nowrap; }
+    .stage-name-input { display: none; width: 145px; min-height: 30px !important; padding-inline: 7px; }
+    .sortable-stage-item.editing .stage-name-label { display: none; }
+    .sortable-stage-item.editing .stage-name-input { display: block; }
+    .stage-remove-button {
+        width: 26px; height: 26px; border: 0; border-radius: 50%; background: transparent;
+        color: #9e2f25; cursor: pointer; font-size: 18px; font-weight: 800; line-height: 1;
+    }
+    .stage-remove-button:hover { background: #faebe9; }
+    .stage-editor-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 7px; align-items: center; }
+    .stage-editor-actions h2,
+    .settings-description-actions h2 { margin: 0; font-size: 15px; line-height: 1.2; }
+    .compact-settings-button {
+        width: auto; min-width: 0; min-height: 30px; padding: 4px 9px;
+        border-radius: 7px; font-size: 11px; font-weight: 800;
+    }
+    .description-input-wrap { position: relative; }
+    .description-input-wrap textarea {
+        min-height: 78px; padding: 8px 10px 24px; font-size: 12px; line-height: 1.35; resize: vertical;
+    }
+    .description-input-wrap small {
+        position: absolute; right: 9px; bottom: 7px; padding-left: 8px;
+        background: rgba(255,255,255,.92); color: #69737d; font-size: 10px; pointer-events: none;
+    }
+    .settings-description-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .product-chip-list { min-height: 30px; display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 7px; }
+    .product-chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 5px 4px 8px; border-radius: 999px; background: #e9f3fc; font-size: 11px; font-weight: 800; }
+    .product-chip form { margin: 0; }
+    .product-chip button { width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: rgba(255,255,255,.7); color: #8b2821; cursor: pointer; line-height: 1; }
+    .product-empty { color: var(--muted); font-size: 11px; }
+    .product-add-form { display: grid; grid-template-columns: minmax(100px, 1fr) minmax(130px, 2fr) auto; align-items: center; gap: 7px; }
+    .product-add-form h2 { margin: 0; font-size: 15px; }
+    .product-add-form input { min-height: 30px; padding-inline: 8px; font-size: 11px; }
+
+    .question-detail h3 {
+        margin: 0 0 12px;
+        font-size: 19px;
+    }
+
+    .empty-message {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.45;
+    }
+
+    .workspace-empty {
+        min-height: 100%;
+        display: grid;
+        place-items: center;
+        padding: 28px;
+        color: var(--muted);
+        text-align: center;
+        font-size: 20px;
+        line-height: 1.4;
+    }
+
+    @media (max-width: 1100px) {
+        .expert-content {
+            height: auto;
+            overflow: visible;
+        }
+
+        .workshop-layout {
+            height: auto;
+        }
+
+        .workshop-layout {
+            grid-template-columns: 1fr;
+        }
+
+        .history-card,
+        .management-card,
+        .sticky-card {
+            min-height: 360px;
+        }
+    }
+
+    @media (max-width: 720px) {
+        .expert-content {
+            padding: 10px;
+        }
+
+        .workshop-row,
+        .stage-form,
+        .add-form,
+        .field-grid,
+        .question-item {
+            grid-template-columns: 1fr;
+        }
+
+        .workshop-actions {
+            justify-self: start;
+        }
+
+        .workspace-tools {
+            top: 12px;
+            right: 12px;
+            gap: 8px;
+        }
+
+        .tool-icon-button {
+            width: 38px;
+            height: 38px;
+        }
+    }
+{% endblock %}
+
+{% block content %}
+    <section class="content expert-content">
+        <div class="workshop-layout">
+            <aside class="panel-card history-card" aria-label="Workshop history">
+                {% if workshops %}
+                    <div class="history-list">
+                        {% for workshop in workshops %}
+                            <article class="workshop-item{% if selected_workshop and selected_workshop.id == workshop.id %} selected{% endif %}{% if workshop.is_active %} published{% endif %}" tabindex="0" data-workshop-url="{{ url_for('expert_dashboard', workshop_id=workshop.id, tab=active_tab) }}" aria-label="Manage {{ workshop.title }}">
+                                <div class="workshop-row">
+                                    <form class="workshop-name-form" method="post" action="{{ url_for('rename_workshop', workshop_id=workshop.id) }}">
+                                        <input type="hidden" name="tab" value="{{ active_tab }}">
+                                        <input class="workshop-name-input" name="title" type="text" value="{{ workshop.title }}" aria-label="Workshop name" required>
+                                    </form>
+                                    <div class="workshop-card-footer">
+                                        <span class="workshop-time">{{ workshop.created_at[:10] }}</span>
+                                        <div class="workshop-actions">
+                                            <form method="post" action="{{ url_for('publish_workshop', workshop_id=workshop.id) }}">
+                                                <input type="hidden" name="tab" value="{{ active_tab }}">
+                                                <button class="publish-switch{% if workshop.is_active %} is-on{% endif %}" type="submit" role="switch" aria-checked="{{ 'true' if workshop.is_active else 'false' }}">{{ 'Close' if workshop.is_active else 'Publish' }}</button>
+                                            </form>
+                                            <form method="post" action="{{ url_for('delete_workshop', workshop_id=workshop.id) }}">
+                                                <button class="delete-button" type="submit">Delete</button>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                            </article>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="empty-history">No workshops have been created yet.</p>
+                {% endif %}
+
+                <form class="history-footer" method="post" action="{{ url_for('new_workshop') }}">
+                    <button class="new-button" type="submit">+ New workshop</button>
+                </form>
+            </aside>
+
+            <main class="panel-card management-card" aria-label="Workshop management">
+                <div class="pairing-code-bar{% if selected_workshop and selected_workshop.is_active %} published{% endif %}" aria-live="polite">
+                    {% if selected_workshop and selected_workshop.access_code %}
+                        <span class="pairing-code-label">Pairing code</span>
+                        <strong class="pairing-code-value">{{ selected_workshop.access_code }}</strong>
+                    {% else %}
+                        <span class="pairing-code-empty">Publish this workshop to generate its four-digit pairing code.</span>
+                    {% endif %}
+                </div>
+                <div class="management-body">
+                    {% if active_tab == 'settings' %}
+                        {% if selected_workshop %}
+                            <div class="settings-simple">
+                                <section class="description-card">
+                                    <form method="post" action="{{ url_for('save_lifecycle_stages', workshop_id=selected_workshop.id) }}">
+                                        <div class="sortable-stage-list" id="sortableStageList" aria-label="Lifecycle stages; drag to reorder">
+                                            {% for stage in lifecycle_stages %}
+                                                <div class="sortable-stage-item" data-stage-id="{{ stage.id }}">
+                                                    <button class="stage-drag-handle" type="button" draggable="true" aria-label="Drag {{ stage.name }} to reorder">&#8942;&#8942;</button>
+                                                    <input type="hidden" name="stage_id" value="{{ stage.id }}">
+                                                    <span class="stage-name-label" tabindex="0">{{ stage.name }}</span>
+                                                    <input class="stage-name-input" name="stage_name" type="text" value="{{ stage.name }}" aria-label="Lifecycle stage name" required>
+                                                    <button class="stage-remove-button" type="button" data-remove-stage aria-label="Delete {{ stage.name }}">&times;</button>
+                                                </div>
+                                            {% endfor %}
+                                        </div>
+                                        <div class="stage-editor-actions">
+                                            <h2>Lifecycle stages</h2>
+                                            <button class="text-button compact-settings-button" id="addStageRow" type="button">+ Add stage</button>
+                                            <button class="save-button compact-settings-button" type="submit">Save stages</button>
+                                        </div>
+                                    </form>
+                                </section>
+
+                                <section class="description-card">
+                                    <div class="settings-step-picker" role="tablist" aria-label="Select a step to describe">
+                                        {% for step in steps %}
+                                            <button class="settings-step-button{% if loop.first %} active{% endif %}" type="button" role="tab"
+                                                    aria-selected="{{ 'true' if loop.first else 'false' }}"
+                                                    data-description-step="{{ step.step_number }}"
+                                                    data-description="{{ step.description[:180]|e }}"
+                                                    data-save-url="{{ url_for('update_step_description', workshop_id=selected_workshop.id, step_number=step.step_number) }}">Step {{ step.step_number }}</button>
+                                        {% endfor %}
+                                    </div>
+                                    <form class="settings-description-form" id="stepDescriptionForm" method="post" action="{{ url_for('update_step_description', workshop_id=selected_workshop.id, step_number=steps[0].step_number) }}">
+                                        <div class="description-input-wrap">
+                                            <textarea id="stepDescriptionInput" name="description" maxlength="180" placeholder="Describe Step {{ steps[0].step_number }}..." aria-label="Selected step description">{{ steps[0].description[:180] }}</textarea>
+                                            <small>Maximum 180 characters</small>
+                                        </div>
+                                        <div class="settings-description-actions">
+                                            <h2>Step description</h2>
+                                            <button class="save-button compact-settings-button" type="submit">Save description</button>
+                                        </div>
+                                    </form>
+                                </section>
+                                <section class="description-card product-settings-card">
+                                    <div class="product-chip-list" aria-label="Products used for fingerprint evaluation">
+                                        {% for product in products %}
+                                            <span class="product-chip">
+                                                {{ product.name }}
+                                                <form method="post" action="{{ url_for('delete_workshop_product', workshop_id=selected_workshop.id, product_id=product.id) }}">
+                                                    <button type="submit" aria-label="Delete {{ product.name }}">&times;</button>
+                                                </form>
+                                            </span>
+                                        {% else %}
+                                            <span class="product-empty">No products added yet.</span>
+                                        {% endfor %}
+                                    </div>
+                                    <form class="product-add-form" method="post" action="{{ url_for('add_workshop_product', workshop_id=selected_workshop.id) }}">
+                                        <h2>Add products</h2>
+                                        <input name="product_name" type="text" maxlength="120" placeholder="Product name" aria-label="Product name" required>
+                                        <button class="save-button compact-settings-button" type="submit">Add product</button>
+                                    </form>
+                                </section>
+                            </div>
+                        {% endif %}
+                    {% elif selected_workshop and active_tab == 'step3' %}
+                        <section class="description-card">
+                            <h2>Step 3: Challenges</h2>
+                            <p class="empty-message">
+                                Step 3 is generated automatically for every lifecycle stage. Participants compare their Step 1 current-product evaluation with their Step 2 future-product answers, then record classified solutions. No predefined questions are needed here.
+                            </p>
+                            <div class="stage-list">
+                                {% for stage in lifecycle_stages %}
+                                    <div class="stage-row"><strong>{{ stage.name }}</strong><span>Automatic comparison workspace</span></div>
+                                {% endfor %}
+                            </div>
+                        </section>
+                    {% elif selected_workshop and active_tab == 'step4' %}
+                        <section class="description-card">
+                            <h2>Step 4: Develop strategies</h2>
+                            <p class="empty-message">
+                                Step 4 is generated automatically from every strategy participants save in Step 3. Each strategy receives LSC, Measurement, and Comments fields plus lifecycle-stage and sustainability classifications. No predefined questions are needed here.
+                            </p>
+                        </section>
+                    {% elif selected_workshop and active_tab == 'step5' %}
+                        <section class="description-card">
+                            <h2>Step 5: Define the LSC scale</h2>
+                            <p class="empty-message">
+                                Step 5 is generated from the LSCs participants select in the Step 4 heat map. Each selected LSC receives a 0–9 scale and user-defined explanations. No predefined questions are needed here.
+                            </p>
+                        </section>
+                    {% elif selected_workshop %}
+                        {% set step_number = active_tab|replace('step', '') %}
+                        <p class="empty-message">Add a question to a lifecycle stage, then edit it directly on its sticky note.</p>
+                        <div class="stage-sections">
+                            {% for stage in lifecycle_stages %}
+                                <section class="stage-section">
+                                    <h2>{{ stage.name }}</h2>
+                                    <form class="question-form" method="post" action="{{ url_for('add_question', workshop_id=selected_workshop.id) }}">
+                                        <input type="hidden" name="tab" value="{{ active_tab }}">
+                                        <input type="hidden" name="stage_id" value="{{ stage.id }}">
+                                        <button class="save-button" type="submit">+ Add question</button>
+                                    </form>
+                                </section>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="empty-message">Create a new workshop to manage step questions.</p>
+                    {% endif %}
+                </div>
+            </main>
+
+            <aside class="panel-card sticky-card" aria-label="Sticky-note workspace">
+                {% if selected_workshop %}
+                    <div class="sticky-workspace">
+                        <div class="workspace-tools" aria-label="Workspace actions">
+                            <button class="tool-icon-button" type="button" aria-label="Expand workspace">
+                                <img src="{{ url_for('resources', filename='expand.png') }}" alt="">
+                            </button>
+                            <button class="zoom-button" type="button" data-zoom-action="out" aria-label="Zoom out">-</button>
+                            <button class="zoom-button" type="button" data-zoom-action="in" aria-label="Zoom in">+</button>
+                        </div>
+
+                        <div class="sticky-content">
+                            {% set workspace = namespace(has_questions=false) %}
+                            {% for step in steps %}
+                                {% set step_questions = all_questions_by_step_stage.get(step.step_number, {}) %}
+                                {% if step_questions %}
+                                    {% set workspace.has_questions = true %}
+                                    <section class="sticky-step">
+                                        <h2 class="sticky-step-title">Step {{ step.step_number }}</h2>
+                                        {% for stage in lifecycle_stages %}
+                                            {% set stage_questions = step_questions.get(stage.id, []) %}
+                                            {% if stage_questions %}
+                                                <section class="sticky-stage">
+                                                    <h3 class="sticky-stage-title">{{ stage.name }}</h3>
+                                                    <div class="sticky-note-list">
+                                                        {% for question in stage_questions %}
+                                                            <article class="sticky-note-item" tabindex="0" data-sticky-note
+                                                                     data-question-id="{{ question.id }}"
+                                                                     data-delete-url="{{ url_for('delete_question', question_id=question.id) }}"
+                                                                     data-add-url="{{ url_for('add_question_async', workshop_id=selected_workshop.id) }}"
+                                                                     data-workshop-id="{{ selected_workshop.id }}"
+                                                                     data-step-number="{{ step.step_number }}"
+                                                                     data-stage-id="{{ stage.id }}"
+                                                                     data-stage-name="{{ stage.name }}">
+                                                                <div class="sticky-preview">
+                                                                    <p class="sticky-question">{{ question.question_text or 'Question for ' ~ stage.name }}</p>
+                                                                    <p class="sticky-guidance">{{ question.guidance or 'No guidance provided.' }}</p>
+                                                                </div>
+                                                                <form class="sticky-edit-form" data-autosave-url="{{ url_for('autosave_question', question_id=question.id) }}">
+                                                                    <input name="question_text" type="text" value="{{ question.question_text }}" placeholder="Question for {{ stage.name }}" aria-label="Question for {{ stage.name }}">
+                                                                    <textarea name="guidance" placeholder="Optional guidance" aria-label="Question guidance">{{ question.guidance or '' }}</textarea>
+                                                                    <span class="autosave-status" aria-live="polite"></span>
+                                                                </form>
+                                                                {% if stage_questions|length > 1 %}
+                                                                    <form class="sticky-delete-form" method="post" action="{{ url_for('delete_question', question_id=question.id) }}">
+                                                                        <input type="hidden" name="workshop_id" value="{{ selected_workshop.id }}">
+                                                                        <input type="hidden" name="tab" value="step{{ step.step_number }}">
+                                                                        <button class="sticky-note-delete" type="submit" aria-label="Delete question">&times;</button>
+                                                                    </form>
+                                                                {% endif %}
+                                                                {% if loop.last %}
+                                                                    <button class="sticky-note-add" type="button" data-add-question
+                                                                            data-add-url="{{ url_for('add_question_async', workshop_id=selected_workshop.id) }}"
+                                                                            aria-label="Add another question for {{ stage.name }}">+</button>
+                                                                {% endif %}
+                                                            </article>
+                                                        {% endfor %}
+                                                    </div>
+                                                </section>
+                                            {% endif %}
+                                        {% endfor %}
+                                    </section>
+                                {% endif %}
+                            {% endfor %}
+
+                            {% if not workspace.has_questions %}
+                                <div class="sticky-empty">
+                                    Step 3 comparisons are generated from Step 1 and Step 2 answers. Add questions to Step 1 or Step 2 to see editable notes here.
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                {% else %}
+                    <div class="workspace-empty">
+                        Create a new workshop to open the sticky-note workspace.
+                    </div>
+                {% endif %}
+            </aside>
+        </div>
+    </section>
+
+    <script>
+        const descriptionForm = document.getElementById("stepDescriptionForm");
+        const descriptionInput = document.getElementById("stepDescriptionInput");
+        const descriptionButtons = document.querySelectorAll("[data-description-step]");
+
+        descriptionButtons.forEach(button => {
+            button.addEventListener("click", () => {
+                descriptionButtons.forEach(candidate => {
+                    const selected = candidate === button;
+                    candidate.classList.toggle("active", selected);
+                    candidate.setAttribute("aria-selected", String(selected));
+                });
+                descriptionForm.action = button.dataset.saveUrl;
+                descriptionInput.value = button.dataset.description || "";
+                descriptionInput.placeholder = `Describe Step ${button.dataset.descriptionStep}...`;
+                descriptionInput.setAttribute("aria-label", `Step ${button.dataset.descriptionStep} description`);
+                descriptionInput.focus();
+            });
+        });
+
+        const sortableStageList = document.getElementById("sortableStageList");
+        let draggedStage = null;
+
+        const makeStageDraggable = item => {
+            item.addEventListener("dragstart", event => {
+                if (!event.target.closest(".stage-drag-handle")) {
+                    event.preventDefault();
+                    return;
+                }
+                draggedStage = item;
+                item.classList.add("is-dragging");
+                event.dataTransfer.effectAllowed = "move";
+            });
+            item.addEventListener("dragend", () => {
+                item.classList.remove("is-dragging");
+                draggedStage = null;
+            });
+        };
+
+        const makeStageEditable = item => {
+            const label = item.querySelector(".stage-name-label");
+            const input = item.querySelector(".stage-name-input");
+            const beginEditing = () => {
+                item.classList.add("editing");
+                input.focus();
+                input.select();
+            };
+            const finishEditing = () => {
+                if (input.value.trim()) label.textContent = input.value.trim();
+                item.classList.remove("editing");
+            };
+            label.addEventListener("click", beginEditing);
+            label.addEventListener("keydown", event => {
+                if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    beginEditing();
+                }
+            });
+            input.addEventListener("blur", finishEditing);
+            input.addEventListener("keydown", event => {
+                if (event.key === "Enter") {
+                    event.preventDefault();
+                    finishEditing();
+                }
+            });
+        };
+
+        sortableStageList?.querySelectorAll(".sortable-stage-item").forEach(item => {
+            makeStageDraggable(item);
+            makeStageEditable(item);
+        });
+
+        sortableStageList?.addEventListener("dragover", event => {
+            event.preventDefault();
+            if (!draggedStage) return;
+            const siblings = [...sortableStageList.querySelectorAll(".sortable-stage-item:not(.is-dragging)")];
+            const nextSibling = siblings.find(sibling => {
+                const rect = sibling.getBoundingClientRect();
+                if (event.clientY < rect.top) return true;
+                return event.clientY <= rect.bottom && event.clientX < rect.left + rect.width / 2;
+            });
+            sortableStageList.insertBefore(draggedStage, nextSibling || null);
+        });
+
+        sortableStageList?.addEventListener("click", event => {
+            const removeButton = event.target.closest("[data-remove-stage]");
+            if (removeButton) removeButton.closest(".sortable-stage-item").remove();
+        });
+
+        document.getElementById("addStageRow")?.addEventListener("click", () => {
+            const item = document.createElement("div");
+            item.className = "sortable-stage-item editing";
+            item.innerHTML = `
+                <button class="stage-drag-handle" type="button" draggable="true" aria-label="Drag new lifecycle stage to reorder">&#8942;&#8942;</button>
+                <input type="hidden" name="stage_id" value="">
+                <span class="stage-name-label" tabindex="0">New stage</span>
+                <input class="stage-name-input" name="stage_name" type="text" placeholder="Enter a lifecycle stage" aria-label="New lifecycle stage name" required>
+                <button class="stage-remove-button" type="button" data-remove-stage aria-label="Delete new lifecycle stage">&times;</button>`;
+            sortableStageList.appendChild(item);
+            makeStageDraggable(item);
+            makeStageEditable(item);
+            item.querySelector('[name="stage_name"]').focus();
+            sortableStageList.scrollTop = sortableStageList.scrollHeight;
+        });
+
+        document.querySelectorAll(".workshop-name-form").forEach(form => {
+            const input = form.querySelector(".workshop-name-input");
+            input.dataset.savedValue = input.value;
+            const saveName = async () => {
+                const title = input.value.trim();
+                if (!title) {
+                    input.value = input.dataset.savedValue;
+                    return;
+                }
+                if (title === input.dataset.savedValue) return;
+                input.value = title;
+                const response = await fetch(form.action, { method: "POST", body: new FormData(form) });
+                if (response.ok) input.dataset.savedValue = title;
+                else input.value = input.dataset.savedValue;
+            };
+            form.addEventListener("submit", event => {
+                event.preventDefault();
+                input.blur();
+            });
+            input.addEventListener("blur", saveName);
+            input.addEventListener("keydown", event => {
+                if (event.key === "Enter") {
+                    event.preventDefault();
+                    input.blur();
+                } else if (event.key === "Escape") {
+                    input.value = input.dataset.savedValue;
+                    input.blur();
+                }
+            });
+        });
+
+        document.querySelectorAll(".workshop-item").forEach(item => {
+            const openWorkshop = () => {
+                window.location.href = item.dataset.workshopUrl;
+            };
+
+            item.addEventListener("click", event => {
+                if (event.target.closest("a, button, form")) {
+                    return;
+                }
+                openWorkshop();
+            });
+
+            item.addEventListener("keydown", event => {
+                if (event.target.closest("input, textarea, select, button, form")) {
+                    return;
+                }
+                if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    openWorkshop();
+                }
+            });
+        });
+
+        const stickyWorkspace = document.querySelector(".sticky-workspace");
+        let stickyZoom = 1;
+        let stickyPanX = 0;
+        let stickyPanY = 0;
+        let isPanning = false;
+        let hasPanned = false;
+        let lastPointerX = 0;
+        let lastPointerY = 0;
+
+        const updateStickyTransform = () => {
+            if (!stickyWorkspace) {
+                return;
+            }
+
+            stickyWorkspace.style.setProperty("--sticky-zoom", stickyZoom.toFixed(2));
+            stickyWorkspace.style.setProperty("--sticky-pan-x", `${stickyPanX}px`);
+            stickyWorkspace.style.setProperty("--sticky-pan-y", `${stickyPanY}px`);
+            stickyWorkspace.classList.toggle("overview-mode", stickyZoom < 0.85);
+        };
+
+        const focusStickyNote = note => {
+            const currentFloatingNote = stickyWorkspace.querySelector(".floating-note");
+            if (currentFloatingNote && currentFloatingNote !== note) {
+                currentFloatingNote._originPlaceholder.replaceWith(currentFloatingNote);
+                currentFloatingNote._originPlaceholder = null;
+                currentFloatingNote.classList.remove("focused", "floating-note");
+            }
+            if (!note.classList.contains("floating-note")) {
+                const placeholder = document.createElement("div");
+                placeholder.className = "sticky-note-placeholder";
+                note.parentNode.insertBefore(placeholder, note);
+                note._originPlaceholder = placeholder;
+                stickyWorkspace.appendChild(note);
+            }
+            document.querySelectorAll("[data-sticky-note]").forEach(candidate => candidate.classList.toggle("focused", candidate === note));
+            note.classList.add("floating-note");
+            stickyWorkspace.classList.add("has-focused-note");
+            requestAnimationFrame(() => {
+                note.querySelector('[name="question_text"]')?.focus();
+            });
+        };
+
+        const showStickyOverview = () => {
+            if (!stickyWorkspace) return;
+            const floatingNote = stickyWorkspace.querySelector(".floating-note");
+            if (floatingNote?._originPlaceholder) {
+                floatingNote._originPlaceholder.replaceWith(floatingNote);
+                floatingNote._originPlaceholder = null;
+                floatingNote.classList.remove("focused", "floating-note");
+            }
+            stickyWorkspace.classList.remove("has-focused-note");
+        };
+
+        const autosaveTimers = new WeakMap();
+
+        const bindAutosaveForm = form => {
+            const save = async () => {
+                const status = form.querySelector(".autosave-status");
+                status.textContent = "Saving…";
+                const response = await fetch(form.dataset.autosaveUrl, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        question_text: form.elements.question_text.value,
+                        guidance: form.elements.guidance.value
+                    })
+                });
+                status.textContent = response.ok ? "Saved" : "Could not save";
+                if (response.ok) {
+                    const preview = form.closest(".sticky-note-item").querySelector(".sticky-preview");
+                    preview.querySelector(".sticky-question").textContent = form.elements.question_text.value || form.elements.question_text.placeholder;
+                    preview.querySelector(".sticky-guidance").textContent = form.elements.guidance.value || "No guidance provided.";
+                }
+            };
+            form.addEventListener("submit", event => event.preventDefault());
+            form.addEventListener("input", () => {
+                clearTimeout(autosaveTimers.get(form));
+                form.querySelector(".autosave-status").textContent = "Unsaved changes";
+                autosaveTimers.set(form, setTimeout(save, 650));
+            });
+        };
+
+        const ensureDeleteControls = noteList => {
+            const notes = [...noteList.querySelectorAll(":scope > [data-sticky-note]")];
+            if (notes.length < 2) {
+                notes.forEach(note => note.querySelector(".sticky-delete-form")?.remove());
+                return;
+            }
+            notes.forEach(note => {
+                if (note.querySelector(".sticky-delete-form")) return;
+                const form = document.createElement("form");
+                form.className = "sticky-delete-form";
+                form.method = "post";
+                form.action = note.dataset.deleteUrl;
+                form.innerHTML = `<input type="hidden" name="workshop_id" value="${note.dataset.workshopId}">
+                    <input type="hidden" name="tab" value="step${note.dataset.stepNumber}">
+                    <button class="sticky-note-delete" type="submit" aria-label="Delete question">&times;</button>`;
+                note.appendChild(form);
+            });
+        };
+
+        const refreshLastCardControls = noteList => {
+            const notes = [...noteList.querySelectorAll(":scope > [data-sticky-note]")];
+            notes.forEach(note => note.querySelector("[data-add-question]")?.remove());
+            const lastNote = notes.at(-1);
+            if (lastNote) {
+                const addButton = document.createElement("button");
+                addButton.className = "sticky-note-add";
+                addButton.type = "button";
+                addButton.dataset.addQuestion = "";
+                addButton.dataset.addUrl = lastNote.dataset.addUrl;
+                addButton.setAttribute("aria-label", `Add another question for ${lastNote.dataset.stageName}`);
+                addButton.textContent = "+";
+                lastNote.appendChild(addButton);
+            }
+            ensureDeleteControls(noteList);
+        };
+
+        const bindStickyNote = note => {
+            note.addEventListener("click", event => {
+                if (event.target.closest(".sticky-delete-form, [data-add-question]")) return;
+                if (!note.classList.contains("focused")) focusStickyNote(note);
+            });
+            note.addEventListener("keydown", event => {
+                if ((event.key === "Enter" || event.key === " ") && !event.target.closest("input, textarea, button")) {
+                    event.preventDefault();
+                    focusStickyNote(note);
+                }
+            });
+            bindAutosaveForm(note.querySelector(".sticky-edit-form"));
+        };
+
+        stickyWorkspace?.addEventListener("click", async event => {
+            const button = event.target.closest("[data-add-question]");
+            if (button) {
+                const note = button.closest("[data-sticky-note]");
+                button.disabled = true;
+                const response = await fetch(button.dataset.addUrl, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        step_number: Number(note.dataset.stepNumber),
+                        stage_id: Number(note.dataset.stageId)
+                    })
+                });
+                if (!response.ok) {
+                    button.disabled = false;
+                    return;
+                }
+                const created = await response.json();
+                const noteList = note._originPlaceholder?.parentElement || note.closest(".sticky-note-list");
+                const newNote = note.cloneNode(true);
+                newNote.classList.remove("focused", "floating-note");
+                newNote.dataset.questionId = created.id;
+                newNote.dataset.deleteUrl = created.delete_url;
+                const newForm = newNote.querySelector(".sticky-edit-form");
+                newForm.dataset.autosaveUrl = created.autosave_url;
+                newForm.elements.question_text.value = "";
+                newForm.elements.guidance.value = "";
+                newForm.querySelector(".autosave-status").textContent = "";
+                newNote.querySelector(".sticky-question").textContent = `Question for ${created.stage_name}`;
+                newNote.querySelector(".sticky-guidance").textContent = "No guidance provided.";
+                newNote.querySelector(".sticky-delete-form")?.remove();
+                newNote.querySelector("[data-add-question]").disabled = false;
+                noteList.appendChild(newNote);
+                bindStickyNote(newNote);
+                refreshLastCardControls(noteList);
+                focusStickyNote(newNote);
+            }
+        });
+
+        stickyWorkspace?.addEventListener("submit", async event => {
+            const deleteForm = event.target.closest(".sticky-delete-form");
+            if (!deleteForm) return;
+            event.preventDefault();
+            const note = deleteForm.closest("[data-sticky-note]");
+            const noteList = note._originPlaceholder?.parentElement || note.closest(".sticky-note-list");
+            deleteForm.querySelector("button").disabled = true;
+            const response = await fetch(deleteForm.action, { method: "POST", body: new FormData(deleteForm) });
+            if (!response.ok) {
+                deleteForm.querySelector("button").disabled = false;
+                return;
+            }
+            if (note._originPlaceholder) note._originPlaceholder.remove();
+            note.remove();
+            stickyWorkspace.classList.remove("has-focused-note");
+            refreshLastCardControls(noteList);
+        });
+
+        document.querySelectorAll("[data-sticky-note]").forEach(bindStickyNote);
+
+        document.querySelectorAll("[data-zoom-action]").forEach(button => {
+            button.addEventListener("click", () => {
+                const direction = button.dataset.zoomAction === "in" ? 0.1 : -0.1;
+                stickyZoom = Math.min(1.6, Math.max(0.7, stickyZoom + direction));
+                updateStickyTransform();
+            });
+        });
+
+        if (stickyWorkspace) {
+            stickyWorkspace.addEventListener("wheel", event => {
+                if (event.target.closest("input, textarea, select")) return;
+                event.preventDefault();
+                const previousZoom = stickyZoom;
+                const zoomDelta = event.deltaY < 0 ? 0.08 : -0.08;
+                stickyZoom = Math.min(1.8, Math.max(0.5, stickyZoom + zoomDelta));
+                const rect = stickyWorkspace.getBoundingClientRect();
+                const pointerX = event.clientX - rect.left;
+                const pointerY = event.clientY - rect.top;
+                const zoomRatio = stickyZoom / previousZoom;
+
+                stickyPanX = pointerX - (pointerX - stickyPanX) * zoomRatio;
+                stickyPanY = pointerY - (pointerY - stickyPanY) * zoomRatio;
+                updateStickyTransform();
+            }, { passive: false });
+
+            stickyWorkspace.addEventListener("pointerdown", event => {
+                if (event.target.closest(".workspace-tools, [data-sticky-note], input, textarea, select, button, form")) {
+                    return;
+                }
+
+                isPanning = true;
+                hasPanned = false;
+                lastPointerX = event.clientX;
+                lastPointerY = event.clientY;
+                stickyWorkspace.classList.add("is-panning");
+                stickyWorkspace.setPointerCapture(event.pointerId);
+            });
+
+            stickyWorkspace.addEventListener("pointermove", event => {
+                if (!isPanning) {
+                    return;
+                }
+
+                const deltaX = event.clientX - lastPointerX;
+                const deltaY = event.clientY - lastPointerY;
+                if (Math.abs(deltaX) + Math.abs(deltaY) > 2) hasPanned = true;
+                stickyPanX += deltaX;
+                stickyPanY += deltaY;
+                lastPointerX = event.clientX;
+                lastPointerY = event.clientY;
+                updateStickyTransform();
+            });
+
+            const stopPanning = event => {
+                isPanning = false;
+                stickyWorkspace.classList.remove("is-panning");
+                if (stickyWorkspace.hasPointerCapture(event.pointerId)) {
+                    stickyWorkspace.releasePointerCapture(event.pointerId);
+                }
+            };
+
+            stickyWorkspace.addEventListener("pointerup", stopPanning);
+            stickyWorkspace.addEventListener("pointercancel", stopPanning);
+            stickyWorkspace.addEventListener("pointerleave", event => {
+                if (isPanning) {
+                    stopPanning(event);
+                }
+            });
+
+            stickyWorkspace.addEventListener("click", event => {
+                if (event.target.closest("[data-sticky-note], .workspace-tools")) return;
+                if (hasPanned) {
+                    hasPanned = false;
+                    return;
+                }
+                showStickyOverview();
+            });
+        }
+    </script>
+{% endblock %}

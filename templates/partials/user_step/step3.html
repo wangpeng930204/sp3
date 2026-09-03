@@ -1,0 +1,101 @@
+{% set paired_step1 = paired_questions.get(1, {}).get(current_question.lifecycle_stage_id) %}
+{% set paired_step2 = paired_questions.get(2, {}).get(current_question.lifecycle_stage_id) %}
+{% set paired_step1_list = paired_question_lists.get(1, {}).get(current_question.lifecycle_stage_id, []) %}
+{% set paired_step2_list = paired_question_lists.get(2, {}).get(current_question.lifecycle_stage_id, []) %}
+<section class="step3-workspace" aria-label="Step 3 paired solution workspace">
+    <div class="step3-columns">
+        <article class="step3-panel step3-source-panel">
+            {% if paired_step1_list %}
+                <div class="step3-source-window" aria-label="Step 1 question window">
+                    <div class="step3-source-tools" aria-label="Step 1 window zoom">
+                        <button class="step3-source-zoom source-mode-switch" type="button" data-source-mode-switch
+                                aria-label="Show Step 1 overview in this window" title="Show overview">▦</button>
+                    </div>
+                    <div class="step3-source-track">
+                        {% for source_question in paired_step1_list %}
+                            <article class="step3-source-card" data-source-card>
+                                <p class="note-question">{{ source_question.question_text }}</p>
+                                <div class="paired-answer">
+                                    <p class="paired-answer-label">Your answer</p>
+                                    {% set source_answer = saved_responses.get(source_question.id, '')|trim %}
+                                    <p class="paired-answer-text{% if not source_answer %} paired-answer-empty{% endif %}">{{ source_answer or 'Not answered yet' }}</p>
+                                </div>
+                            </article>
+                        {% endfor %}
+                    </div>
+                </div>
+                <p class="step3-window-hint">Drag to browse the Step 1 overview</p>
+            {% else %}
+                <p class="paired-answer-text paired-answer-empty">No Step 1 question is available for this lifecycle stage.</p>
+            {% endif %}
+        </article>
+
+        <article class="step3-panel step3-source-panel">
+            {% if paired_step2_list %}
+                <div class="step3-source-window" aria-label="Step 2 question window">
+                    <div class="step3-source-tools" aria-label="Step 2 window zoom">
+                        <button class="step3-source-zoom source-mode-switch" type="button" data-source-mode-switch
+                                aria-label="Show Step 2 overview in this window" title="Show overview">▦</button>
+                    </div>
+                    <div class="step3-source-track">
+                        {% for source_question in paired_step2_list %}
+                            <article class="step3-source-card" data-source-card>
+                                <p class="note-question">{{ source_question.question_text }}</p>
+                                <div class="paired-answer">
+                                    <p class="paired-answer-label">Your answers</p>
+                                    {% if classified_responses.get(source_question.id) %}
+                                        <div class="classified-list">{{ classified_cards(classified_responses.get(source_question.id, [])) }}</div>
+                                    {% else %}
+                                        <p class="paired-answer-text paired-answer-empty">Not answered yet</p>
+                                    {% endif %}
+                                </div>
+                            </article>
+                        {% endfor %}
+                    </div>
+                </div>
+                <p class="step3-window-hint">Drag to browse the Step 2 overview</p>
+            {% else %}
+                <p class="paired-answer-text paired-answer-empty">No Step 2 question is available for this lifecycle stage.</p>
+            {% endif %}
+        </article>
+
+        <article class="step3-panel step3-input-panel">
+            <form class="solution-form" method="post" action="{{ url_for('add_solution_response', stage_id=current_question.lifecycle_stage_id) }}">
+                <input type="hidden" name="workshop_id" value="{{ workshop.id }}">
+                <textarea class="response-input" id="solution-response-{{ current_question.id }}" name="response_text" aria-label="Challenge response" placeholder="Type your challenge..." required></textarea>
+                <div class="solution-submit-row">
+                    <div class="solution-category-grid" role="radiogroup" aria-label="Classify this solution">
+                        {% for category, category_label in [('social', 'Social'), ('economic', 'Economic'), ('ecological', 'Ecological')] %}
+                            <label class="solution-choice {{ category }}">
+                                <input type="radio" name="category" value="{{ category }}" required>
+                                <span>{{ category_label }}</span>
+                            </label>
+                        {% endfor %}
+                    </div>
+                    <button class="save-response" type="submit">Save response</button>
+                </div>
+                {% if request.args.get('saved') %}
+                    <span class="saved-message" role="status">Response added</span>
+                {% elif request.args.get('classification_required') %}
+                    <span class="saved-message" role="alert">Enter a response and select a classification</span>
+                {% endif %}
+            </form>
+        </article>
+    </div>
+</section>
+
+<div class="workspace-actions" aria-label="Question navigation">
+    {% if previous_question %}
+        <a class="question-nav-button" href="{{ question_url(previous_question) }}">Previous</a>
+    {% elif previous_step %}
+        <a class="question-nav-button" href="{{ url_for('user_step', workshop_id=workshop.id, step=previous_step, view='overview') }}">Previous</a>
+    {% else %}
+        <a class="question-nav-button" href="{{ url_for('user_workshop') }}">Previous</a>
+    {% endif %}
+    <span class="question-counter">{{ current_question_number }} / {{ questions|length }}</span>
+    {% if next_question %}
+        <a class="question-nav-button primary" href="{{ question_url(next_question) }}">Next</a>
+    {% else %}
+        <a class="question-nav-button primary" href="{{ url_for('user_step', workshop_id=workshop.id, step=current_step, view='overview') }}">Next</a>
+    {% endif %}
+</div>

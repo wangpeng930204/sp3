@@ -1,0 +1,83 @@
+<section class="step4-heatmap" aria-label="Step 4 heat map overview" style="--heatmap-rows: {{ questions|length }};">
+    <div class="heatmap-scroll">
+        <div class="heatmap-layout">
+            <table class="heatmap-table heatmap-row-labels" aria-label="Strategy rows">
+                <thead><tr><th scope="col">LSC</th></tr></thead>
+                <tbody>
+                    {% for strategy in questions %}
+                        {% set detail = strategy_details.get(strategy.id) %}
+                        {% set lsc_name = detail.lsc if detail and detail.lsc else 'LSC' ~ loop.index %}
+                        <tr data-heatmap-row="{{ strategy.id }}">
+                            <td>
+                                <span class="heatmap-row-name" title="{{ lsc_name }}">{{ lsc_name[:10] }}{% if lsc_name|length > 10 %}...{% endif %}</span>
+                                <label class="heatmap-select" title="Include {{ lsc_name }} in the coverage statistics">
+                                    <input class="heatmap-check" type="checkbox" value="{{ strategy.id }}"
+                                           data-selection-url="{{ url_for('update_strategy_selection', strategy_id=strategy.id) }}"
+                                           aria-label="Select {{ lsc_name }}"{% if strategy.id in selected_strategy_ids %} checked{% endif %}>
+                                </label>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    <tr class="heatmap-empty-footer"><td class="heatmap-stat-label">Selected: <span id="heatmapSelectedCount">0</span></td></tr>
+                </tbody>
+            </table>
+
+            <table class="heatmap-table heatmap-matrix" aria-label="Lifecycle stage heat map">
+                <thead>
+                    <tr>
+                        {% for stage in lifecycle_stages %}<th scope="col">{{ stage.name }}</th>{% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for strategy in questions %}
+                        {% set detail = strategy_details.get(strategy.id) %}
+                        <tr data-heatmap-row="{{ strategy.id }}">
+                            {% for stage in lifecycle_stages %}
+                                <td>
+                                    <a class="heatmap-cell-link{% if detail and detail.lifecycle_stage_id == stage.id %} active{% endif %}"
+                                       {% if detail and detail.lifecycle_stage_id == stage.id %}data-coverage-axis="stage" data-coverage-key="{{ stage.id }}"{% endif %}
+                                       href="{{ question_url(strategy) }}"
+                                       aria-label="{{ strategy.question_text }} · {{ stage.name }}{% if detail and detail.lifecycle_stage_id == stage.id %}, selected{% endif %}"></a>
+                                </td>
+                            {% endfor %}
+                        </tr>
+                    {% endfor %}
+                    <tr class="heatmap-empty-footer">
+                        {% for stage in lifecycle_stages %}<td><span class="heatmap-stat" data-stat-axis="stage" data-stat-key="{{ stage.id }}">0</span></td>{% endfor %}
+                    </tr>
+                </tbody>
+            </table>
+
+            <table class="heatmap-table heatmap-matrix" aria-label="Sustainability classification heat map">
+                <thead><tr><th scope="col">Ecological</th><th scope="col">Social</th><th scope="col">Economic</th></tr></thead>
+                <tbody>
+                    {% for strategy in questions %}
+                        {% set detail = strategy_details.get(strategy.id) %}
+                        <tr data-heatmap-row="{{ strategy.id }}">
+                            {% for category in ['ecological', 'social', 'economic'] %}
+                                <td>
+                                    <a class="heatmap-cell-link{% if detail and detail.category == category %} active{% endif %}"
+                                       {% if detail and detail.category == category %}data-coverage-axis="category" data-coverage-key="{{ category }}"{% endif %}
+                                       href="{{ question_url(strategy) }}"
+                                       aria-label="{{ strategy.question_text }} · {{ category|capitalize }}{% if detail and detail.category == category %}, selected{% endif %}"></a>
+                                </td>
+                            {% endfor %}
+                        </tr>
+                    {% endfor %}
+                    <tr class="heatmap-empty-footer">
+                        {% for category in ['ecological', 'social', 'economic'] %}<td><span class="heatmap-stat" data-stat-axis="category" data-stat-key="{{ category }}">0</span></td>{% endfor %}
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="heatmap-actions" aria-label="Step navigation">
+            <a class="question-nav-button" href="{{ question_url(questions[-1]) }}">Previous</a>
+            <span class="question-counter overview-counter">Overview</span>
+            {% if next_step %}
+                <a class="question-nav-button primary" href="{{ url_for('user_step', workshop_id=workshop.id, step=next_step) }}">Next</a>
+            {% else %}
+                <a class="question-nav-button primary" href="{{ url_for('user_workshop') }}">Next</a>
+            {% endif %}
+        </div>
+    </div>
+</section>

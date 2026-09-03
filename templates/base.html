@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Digital SPD{% endblock %}</title>
+    <style>
+        :root {
+            color-scheme: light;
+            font-family: Arial, Helvetica, sans-serif;
+            --ink: #070707;
+            --muted: #3f3f3f;
+            --surface: #f3f3f3;
+            --bar: #d8d8d8;
+            --card: #f7f7fb;
+            --line: #eadbd5;
+            --green: #4caf50;
+            --blue: #06376d;
+            --danger: #b42318;
+            /* Change this one value to control the left/right page gutter everywhere. */
+            --page-side-padding: 6px;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: var(--surface);
+            color: var(--ink);
+        }
+
+        .app-shell {
+            min-height: 100vh;
+            display: grid;
+            grid-template-rows: 68px 1fr 68px;
+        }
+
+        .site-header,
+        .site-footer {
+            background: var(--bar);
+        }
+
+        .site-header {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            align-items: center;
+            padding: 0 20px;
+        }
+
+        .brand {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 22px;
+        }
+
+        .brand-text {
+            display: inline-flex;
+            align-items: baseline;
+            gap: 10px;
+            min-width: 0;
+        }
+
+        .brand-page-title {
+            font-size: 18px;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        .logo {
+            width: 52px;
+            height: 46px;
+            object-fit: contain;
+        }
+
+        .home-button,
+        .icon-button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: #000;
+            text-decoration: none;
+        }
+
+        .home-button {
+            width: 42px;
+            height: 42px;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 16px;
+        }
+
+        .header-profile { display: inline-flex; align-items: center; gap: 7px; color: #111827; font-size: 13px; font-weight: 700; text-decoration: none; }
+        .header-user-name { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        .icon-button {
+            width: 34px;
+            height: 34px;
+        }
+
+        .nav-icon {
+            width: 100%;
+            height: 100%;
+            display: block;
+            object-fit: contain;
+        }
+
+        .site-main {
+            position: relative;
+            min-width: 0;
+        }
+
+        .content {
+            width: min(100%, 1040px);
+            margin: 0 auto;
+            padding: 42px var(--page-side-padding) 56px;
+            padding-inline: var(--page-side-padding) !important;
+        }
+
+        .site-footer {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            align-items: center;
+            gap: 18px;
+            padding: 10px 72px;
+            font-size: 12px;
+        }
+
+        .footer-title {
+            display: block;
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        .footer-links {
+            justify-self: center;
+        }
+
+        .footer-ai {
+            width: 36px;
+            height: 36px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            justify-self: end;
+        }
+
+        .footer-ai img {
+            width: 100%;
+            height: 100%;
+            display: block;
+            object-fit: contain;
+        }
+
+        .assistant-button {
+            display: none;
+        }
+
+        .panel-card {
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: 18px;
+        }
+
+        button,
+        input,
+        select {
+            font: inherit;
+        }
+
+        @media (max-width: 760px) {
+            .app-shell {
+                grid-template-rows: auto 1fr auto;
+            }
+
+            .site-header {
+                grid-template-columns: 1fr;
+                gap: 12px;
+                justify-items: center;
+                padding: 16px;
+            }
+
+            .brand {
+                gap: 14px;
+                font-size: 22px;
+            }
+
+            .brand-text {
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+
+            .brand-page-title {
+                font-size: 18px;
+                white-space: normal;
+            }
+
+            .header-actions {
+                justify-content: center;
+            }
+
+            .content {
+                padding: 40px var(--page-side-padding) 72px;
+            }
+
+            .site-footer {
+                grid-template-columns: 1fr;
+                padding: 18px 24px;
+                text-align: center;
+            }
+
+            .footer-links {
+                justify-self: center;
+            }
+        }
+
+        {% block styles %}{% endblock %}
+    </style>
+    {% block head_links %}{% endblock %}
+</head>
+<body>
+    <div class="app-shell">
+        <header class="site-header">
+            <div class="brand" aria-label="Digital SPD">
+                <img class="logo" src="{{ url_for('resources', filename='logo.png') }}" alt="Digital SPD logo">
+                <span class="brand-text">
+                    <span>Digital SPD</span>
+                    {% set header_page_title %}{% block header_page_title %}{% endblock %}{% endset %}
+                    {% if header_page_title|trim %}
+                        <span class="brand-page-title">- {{ header_page_title|trim }}</span>
+                    {% endif %}
+                </span>
+            </div>
+
+            <a class="home-button" href="{{ url_for('dashboard_home') }}" aria-label="Home">
+                <img class="nav-icon" src="{{ url_for('resources', filename='home_icon.png') }}" alt="">
+            </a>
+
+            <nav class="header-actions" aria-label="System actions">
+                <a class="icon-button" href="/login" aria-label="Language and translation">
+                    <img class="nav-icon" src="{{ url_for('resources', filename='lan_icon.png') }}" alt="">
+                </a>
+                {% set header_user_name %}{% block header_user_name %}{% endblock %}{% endset %}
+                <a class="header-profile" href="{{ url_for('user_management') }}" aria-label="User management{% if header_user_name|trim %}: {{ header_user_name|trim }}{% endif %}">
+                    <span class="icon-button profile"><img class="nav-icon" src="{{ url_for('resources', filename='user_icon.png') }}" alt=""></span>
+                    {% if header_user_name|trim %}<span class="header-user-name">{{ header_user_name|trim }}</span>{% endif %}
+                </a>
+            </nav>
+        </header>
+
+        <main class="site-main">
+            {% block content %}{% endblock %}
+        </main>
+
+        <footer class="site-footer">
+            <div>
+                <span class="footer-title">Digital SPD Tool</span>
+                <span>Supporting sustainable product design and assessment</span>
+            </div>
+            <a class="footer-ai" href="/login" aria-label="AI assistant">
+                <img src="{{ url_for('resources', filename='ai_icon.png') }}" alt="">
+            </a>
+            <div class="footer-links">
+                <div>Contact · Help · Privacy</div>
+                <div>© 2026 Digital SPD Tool</div>
+            </div>
+        </footer>
+    </div>
+</body>
+</html>

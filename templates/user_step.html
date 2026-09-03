@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+
+{% block title %}Step {{ current_step }} · Digital SPD{% endblock %}
+
+{% block header_page_title %}Step {{ current_step }}{% endblock %}
+
+{% block head_links %}
+<link rel="stylesheet" href="{{ url_for('static', filename='user_step.css') }}">
+{% endblock %}
+
+{% macro question_url(question) -%}
+    {{ url_for('user_step', workshop_id=workshop.id, step=question.step_number, stage_id=question.lifecycle_stage_id, question_id=question.id) }}
+{%- endmacro %}
+
+{% macro classified_cards(responses, allow_delete=false) -%}
+    {% for response in responses %}
+        <article class="classified-card {{ response.category }}">
+            <div class="classified-card-head">
+                <img class="classification-symbol" src="{{ url_for('resources', filename='AdvanSymbol.png' if response.polarity == 'advantage' else 'DisAdvaSymbol.png') }}" alt="">
+                {% if allow_delete %}
+                    <form method="post" action="{{ url_for('delete_classified_response', response_id=response.id) }}">
+                        <button class="classified-delete" type="submit" aria-label="Delete response">×</button>
+                    </form>
+                {% endif %}
+            </div>
+            <p class="classified-text">{{ response.response_text }}</p>
+        </article>
+    {% endfor %}
+{%- endmacro %}
+
+{% macro solution_cards(responses, allow_delete=false) -%}
+    {% for response in responses %}
+        <article class="solution-card {{ response.category }}">
+            <p>{{ response.response_text }}</p>
+            {% if allow_delete %}
+                <form method="post" action="{{ url_for('delete_solution_response', response_id=response.id) }}">
+                    <button class="solution-delete" type="submit" aria-label="Delete response">&times;</button>
+                </form>
+            {% endif %}
+        </article>
+    {% endfor %}
+{%- endmacro %}
+
+{% block content %}
+    {% set step_info = namespace(description='') %}
+    {% for step in steps %}
+        {% if step.step_number == current_step %}{% set step_info.description = step.description %}{% endif %}
+    {% endfor %}
+    <section class="content step-page">
+        <button class="step-info-button" id="stepInfoButton" type="button" aria-label="Show Step {{ current_step }} description" aria-expanded="false">!</button>
+        <aside class="step-description-popover" id="stepDescriptionPopover" hidden>
+            <h2>Step {{ current_step }}</h2>
+            <p>{{ step_info.description or 'No description has been added for this step yet.' }}</p>
+        </aside>
+        <nav class="step-navigation" aria-label="Workshop progress">
+            <div class="nav-layer" aria-label="Steps">
+                {% for step in steps %}
+                    <a class="progress-link{% if step.step_number in completed_step_numbers %} finished{% endif %}{% if step.step_number == current_step %} current{% endif %}"
+                       href="{{ url_for('user_step', workshop_id=workshop.id if workshop else None, step=step.step_number, view='overview') }}">
+                        Step {{ step.step_number }}
+                    </a>
+                {% else %}
+                    <a class="progress-link current" href="{{ url_for('user_step', workshop_id=workshop.id if workshop else None, step=1, view='overview') }}">Step 1</a>
+                {% endfor %}
+            </div>
+            <div class="nav-layer" aria-label="{% if current_step == 4 %}Challenges{% elif current_step == 5 %}Strategies{% else %}Lifecycle stages{% endif %}">
+                {% if current_step in [4, 5] %}
+                    {% for question in questions %}
+                        <a class="progress-link stage-link{% if question.id in answered_question_ids %} finished{% endif %}{% if current_question and question.id == current_question.id %} current{% endif %}"
+                           href="{{ question_url(question) }}">
+                            {{ 'Challenge' if current_step == 4 else 'Strategy' }} {{ loop.index }}
+                        </a>
+                    {% endfor %}
+                {% else %}
+                    {% for stage in lifecycle_stages %}
+                        <a class="progress-link stage-link{% if stage.id in completed_stage_ids %} finished{% endif %}{% if stage.id == current_stage_id %} current{% endif %}"
+                           href="{{ url_for('user_step', workshop_id=workshop.id if workshop else None, step=current_step, stage_id=stage.id) }}">
+                            {{ stage.name }}
+                        </a>
+                    {% endfor %}
+                {% endif %}
+            </div>
+        </nav>
+
+        <main class="step-workspace" aria-label="Focused workshop question">
+            {% if current_step in [1, 2] and request.args.get('view') != 'overview' %}
+                <div class="workspace-zoom mode-switch-wrap" aria-label="View mode controls">
+                    <a class="view-switch mode-switch"
+                       href="{{ url_for('user_step', workshop_id=workshop.id if workshop else None, step=current_step, stage_id=current_question.lifecycle_stage_id if current_question else None, question_id=current_question.id if current_question else None, view='overview') }}"
+                       aria-label="Switch Step {{ current_step }} to overview" title="Switch to overview">
+                        <span aria-hidden="true">▦</span>
+                    </a>
+                </div>
+            {% endif %}
+
+            {% if request.args.get('view') == 'overview' and current_step in [1, 2, 3] and current_question %}
+                <a class="overview-mode-switch" href="{{ question_url(current_question) }}"
+                   aria-label="Return to focused question" title="Return to focus">⛶</a>
+            {% endif %}
+
+            {% if questions and request.args.get('view') == 'overview' and current_step == 5 %}
+                {% include 'partials/user_step/overview_step5.html' %}
+            {% elif questions and request.args.get('view') == 'overview' and current_step == 4 %}
+                {% include 'partials/user_step/overview_step4.html' %}
+            {% elif questions and request.args.get('view') == 'overview' %}
+                {% include 'partials/user_step/overview_generic.html' %}
+            {% elif questions and current_question and current_step == 3 %}
+                {% include 'partials/user_step/step3.html' %}
+            {% elif questions and current_question and current_step == 4 %}
+                {% include 'partials/user_step/step4.html' %}
+            {% elif questions and current_question and current_step == 5 %}
+                {% include 'partials/user_step/step5.html' %}
+            {% elif questions and current_question %}
+                <div class="board-viewport">
+                    <div class="sticky-board step-{{ current_step }}-board" id="stickyBoard">
+                        {% for question in questions %}
+                            <article class="question-note{% if question.id == current_question.id %} active{% endif %}{% if question.id in answered_question_ids %} answered{% endif %}"
+                               {% if question.id == current_question.id %}id="activeQuestion" aria-current="true"{% endif %}>
+                              {% if question.id != current_question.id %}<a class="note-link" href="{{ question_url(question) }}">{% endif %}
+                                <p class="note-question">{{ question.question_text }}</p>
+                                <p class="note-guidance">{{ question.guidance or 'No guidance provided.' }}</p>
+                                <div class="board-answer-preview">
+                                    <strong>{{ 'Your answer' if current_step == 1 else 'Your answers' }}</strong>
+                                    {% if current_step == 1 %}
+                                        {% set overview_answer = saved_responses.get(question.id, '')|trim %}
+                                        <p{% if not overview_answer %} class="paired-answer-empty"{% endif %}>{{ overview_answer or 'Not answered yet' }}</p>
+                                    {% elif classified_responses.get(question.id) %}
+                                        <div class="board-classified-preview">{{ classified_cards(classified_responses.get(question.id, [])) }}</div>
+                                    {% else %}
+                                        <p class="paired-answer-empty">Not answered yet</p>
+                                    {% endif %}
+                                </div>
+                              {% if question.id != current_question.id %}</a>{% endif %}
+                              {% if question.id == current_question.id and current_step == 1 %}
+                                <form class="response-form" method="post" action="{{ url_for('save_step_response', question_id=question.id) }}">
+                                    <label class="response-label" for="response-{{ question.id }}">Your response</label>
+                                    <textarea class="response-input" id="response-{{ question.id }}" name="response_text" placeholder="Type your answer here...">{{ saved_responses.get(question.id, '') }}</textarea>
+                                    <div class="response-footer">
+                                        {% if request.args.get('saved') %}<span class="saved-message" role="status">Response saved</span>{% else %}<span></span>{% endif %}
+                                        <button class="save-response" type="submit">Save response</button>
+                                    </div>
+                                </form>
+                              {% elif question.id == current_question.id and current_step == 2 %}
+                                {% if classified_responses.get(question.id) %}
+                                    <div class="classified-list">{{ classified_cards(classified_responses.get(question.id, []), true) }}</div>
+                                {% endif %}
+                                <form class="classification-form" method="post" action="{{ url_for('add_classified_response', question_id=question.id) }}">
+                                    <label class="response-label" for="classified-response-{{ question.id }}">Add a response</label>
+                                    <textarea class="response-input" id="classified-response-{{ question.id }}" name="response_text" placeholder="Type one advantage or disadvantage..." required></textarea>
+                                    <div class="classification-submit-row">
+                                        <div class="classification-plate-grid" role="radiogroup" aria-label="Classify this response">
+                                            {% for category, category_label in [('social', 'Social'), ('economic', 'Economic'), ('ecological', 'Ecological')] %}
+                                                <div class="classification-category {{ category }}">
+                                                    <span>{{ category_label }}</span>
+                                                    <div class="classification-choices">
+                                                        {% for polarity, assessment in [('advantage', 'Advantage'), ('disadvantage', 'Disadvantage')] %}
+                                                            <label class="classification-choice" title="{{ assessment }} · {{ category_label }}">
+                                                                <input type="radio" name="classification" value="{{ polarity }}:{{ category }}" required aria-label="{{ assessment }} {{ category_label }}">
+                                                                <span class="classification-choice-content">
+                                                                    <img src="{{ url_for('resources', filename='AdvanSymbol.png' if polarity == 'advantage' else 'DisAdvaSymbol.png') }}" alt="">
+                                                                </span>
+                                                            </label>
+                                                        {% endfor %}
+                                                    </div>
+                                                </div>
+                                            {% endfor %}
+                                        </div>
+                                        <div class="response-footer classification-save-area">
+                                            {% if request.args.get('saved') %}
+                                                <span class="saved-message" role="status">Response added</span>
+                                            {% elif request.args.get('classification_required') %}
+                                                <span class="saved-message" role="alert">Select a classification</span>
+                                            {% endif %}
+                                            <button class="save-response" type="submit">Save response</button>
+                                        </div>
+                                    </div>
+                                </form>
+                              {% endif %}
+                            </article>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div class="workspace-actions" aria-label="Question navigation">
+                    {% if previous_question %}
+                        <a class="question-nav-button" data-direction="previous" href="{{ question_url(previous_question) }}">Previous</a>
+                    {% elif previous_step %}
+                        <a class="question-nav-button" data-direction="previous" href="{{ url_for('user_step', workshop_id=workshop.id, step=previous_step, view='overview') }}">Previous</a>
+                    {% else %}
+                        <a class="question-nav-button" data-direction="previous" href="{{ url_for('user_workshop') }}">Previous</a>
+                    {% endif %}
+                    <span class="question-counter">
+                        {{ current_question_number }} / {{ questions|length }}
+                    </span>
+                    {% if next_question %}
+                        <a class="question-nav-button primary" data-direction="next" href="{{ question_url(next_question) }}">Next</a>
+                    {% else %}
+                        <a class="question-nav-button primary" data-direction="next" href="{{ url_for('user_step', workshop_id=workshop.id if workshop else None, step=current_step, view='overview') }}">Next</a>
+                    {% endif %}
+                </div>
+            {% else %}
+                <div class="empty-workspace">
+                    {% if current_step == 4 %}
+                        Save at least one strategy in Step 3 to begin Step 4.
+                    {% elif current_step == 5 %}
+                        Select at least one LSC in the Step 4 heat map to begin Step 5.
+                    {% else %}
+                        No question has been added for this step and lifecycle stage yet.
+                    {% endif %}
+                </div>
+            {% endif %}
+        </main>
+    </section>
+
+    <script src="{{ url_for('static', filename='user_step.js') }}"></script>
+{% endblock %}
