@@ -239,7 +239,7 @@
                 </span>
             </div>
 
-            <a class="home-button" href="{{ url_for('dashboard_home') }}" aria-label="Home">
+            <a class="home-button" href="{% block header_home_url %}{{ url_for('dashboard_home') }}{% endblock %}" aria-label="Home">
                 <img class="nav-icon" src="{{ url_for('resources', filename='home_icon.png') }}" alt="">
             </a>
 

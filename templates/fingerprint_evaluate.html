@@ -3,17 +3,15 @@
 {% block title %}{{ respondent.title }} Fingerprint | Digital SPD{% endblock %}
 {% block header_page_title %}Fingerprint{% endblock %}
 {% block header_user_name %}{{ respondent.display_name }}{% endblock %}
+{% block header_home_url %}{{ url_for('fingerprint_select_product') }}{% endblock %}
 {% block head_links %}<link rel="stylesheet" href="{{ url_for('static', filename='user_step.css') }}">{% endblock %}
 
 {% block styles %}
-    .fingerprint-page { width: min(100%, 1440px); padding-top: 22px; padding-bottom: 32px; }
-    .fingerprint-heading { margin-bottom: 16px; }
+    .fingerprint-page { width: min(100%, 1440px); padding-top: 16px; padding-bottom: 8px; }
+    .fingerprint-heading { margin-bottom: 10px; }
     .fingerprint-heading h1 { margin: 0; font-size: clamp(22px, 3vw, 34px); }
     .fingerprint-form { display: grid; gap: 12px; }
     .fingerprint-card { padding: 16px 18px; }
-    .fingerprint-card.social { border-left: 6px solid #eab84e; }
-    .fingerprint-card.economic { border-left: 6px solid #6497bd; }
-    .fingerprint-card.ecological { border-left: 6px solid #72ae68; }
     .fingerprint-card h2 { margin: 0; font-size: 16px; line-height: 1.3; }
     .likert-scale { display: grid; grid-template-columns: repeat(10, minmax(42px, 1fr)); gap: 6px; }
     .likert-option { position: relative; cursor: pointer; }
@@ -33,44 +31,49 @@
     .fingerprint-saved { color: #173f72; font-size: 13px; font-weight: 800; }
     .fingerprint-save { min-height: 40px; padding: 7px 16px; border: 0; border-radius: 8px; background: #245a96; color: #fff; cursor: pointer; font-weight: 800; }
     .fingerprint-empty { padding: 50px 24px; text-align: center; }
-    .evaluation-card { min-height: clamp(520px, calc(100vh - 205px), 720px); padding: clamp(20px, 3vw, 34px); }
+    .evaluation-card {
+        height: calc(100dvh - 245px); min-height: 400px;
+        display: flex; flex-direction: column; padding: clamp(18px, 2.5vw, 30px);
+    }
     .evaluation-scale {
         position: relative; display: grid; grid-template-columns: repeat(10, minmax(46px, 1fr));
-        align-items: start; margin-top: 8px;
+        flex: 1 1 auto; min-height: 215px; align-items: start; margin-top: 10px;
     }
-    .evaluation-scale::before { content: ""; position: absolute; top: 111px; left: 5%; right: 5%; height: 2px; background: #333; }
-    .evaluation-point {
-        position: relative; z-index: 1; display: grid; grid-template-rows: 82px 58px 82px;
-        justify-items: center; align-items: center; min-height: 222px; cursor: pointer;
-    }
+    .evaluation-scale::before { content: ""; position: absolute; top: 27px; left: 5%; right: 5%; height: 2px; background: #333; }
+    .evaluation-point { position: relative; z-index: 1; display: grid; justify-items: center; min-height: 205px; cursor: pointer; }
     .evaluation-point input { position: absolute; opacity: 0; pointer-events: none; }
     .evaluation-number {
-        grid-row: 2; width: 40px; height: 40px; display: grid; place-items: center;
+        width: 40px; height: 40px; display: grid; place-items: center; margin-top: 6px;
         border-radius: 50%; background: #5d5d5d; color: #fff; font-size: 18px; font-weight: 800;
     }
-    .evaluation-point.has-definition .evaluation-number { width: 54px; height: 54px; font-size: 22px; }
+    .evaluation-point.has-definition .evaluation-number { width: 54px; height: 54px; margin-top: 0; font-size: 22px; }
+    .evaluation-point.has-definition::after { content: "\2191"; position: absolute; top: 61px; font-size: 34px; font-weight: 300; line-height: 1; }
     .evaluation-point input:checked + .evaluation-number { background: #08739d; transform: scale(1.12); box-shadow: 0 0 0 4px rgba(8,115,157,.18); }
     .evaluation-definition {
-        grid-row: 3; align-self: start; width: min(150px, 94%); max-height: 76px; overflow: auto; padding: 8px;
+        width: min(150px, 94%); min-height: 68px; margin-top: 45px; padding: 9px;
         border: 1px solid #e5e7eb; border-radius: 10px; background: #f9fafb;
-        color: #59636e; font-size: 10px; line-height: 1.3;
+        color: #59636e; font-size: 12px; line-height: 1.35; overflow-wrap: anywhere;
     }
-    .evaluation-point.definition-top .evaluation-definition { grid-row: 1; align-self: end; }
-    .rating-result { margin: 8px 0 14px; color: #52606d; font-size: 14px; font-weight: 700; text-align: center; }
-    .rating-result output { color: #08739d; font-size: 18px; font-weight: 900; }
-    .evaluation-inputs { width: min(100%, 900px); display: grid; grid-template-columns: repeat(2, minmax(260px, 1fr)); gap: 16px; margin: 0 auto; }
-    .confidence-field, .comments-field { display: grid; gap: 8px; padding: 14px; border-radius: 12px; background: #f2f2f7; font-size: 13px; font-weight: 800; }
-    .confidence-row { display: grid; grid-template-columns: 1fr 52px; align-items: center; gap: 10px; }
+    .evaluation-inputs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 10px; }
+    .confidence-field, .comments-field, .selected-rating { min-height: 106px; display: grid; align-content: start; gap: 8px; padding: 14px; border-radius: 12px; background: #f2f2f7; font-size: 13px; font-weight: 800; }
+    .confidence-field { grid-template-rows: auto 1fr; align-content: stretch; }
+    .confidence-row { display: grid; grid-template-columns: 1fr 52px; align-self: center; align-items: center; gap: 10px; }
     .confidence-slider { width: 100%; accent-color: #08739d; }
     .confidence-value { padding: 5px; border-radius: 7px; background: #fff; text-align: center; }
-    .comments-field textarea { width: 100%; min-height: 62px; padding: 10px; border: 1px solid #c9cdd2; border-radius: 8px; resize: vertical; font: inherit; font-weight: 400; }
+    .selected-rating { grid-template-rows: auto 1fr; justify-items: start; align-content: stretch; }
+    .selected-rating output {
+        width: 54px; height: 54px; display: grid; place-items: center; align-self: center; justify-self: center;
+        border-radius: 50%; background: #08739d; color: #fff; font-size: 24px; font-weight: 900; line-height: 1;
+        box-shadow: 0 0 0 4px rgba(8,115,157,.18);
+    }
+    .comments-field textarea { width: 100%; min-height: 78px; padding: 10px; border: 1px solid #c9cdd2; border-radius: 8px; resize: vertical; font: inherit; font-weight: 400; }
     .evaluation-error { margin: 10px 0 0; color: #b42318; font-size: 13px; font-weight: 800; }
-    .evaluation-navigation { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; }
+    .evaluation-navigation { display: flex; align-items: center; justify-content: flex-end; gap: 7px; margin-top: auto; padding-top: 10px; }
     .evaluation-navigation .disabled { visibility: hidden; }
     @media (max-width: 700px) {
         .likert-scale { grid-template-columns: repeat(5, 1fr); }
-        .evaluation-card { overflow-x: auto; }
-        .evaluation-scale { min-width: 760px; }
+        .evaluation-card { height: auto; min-height: 0; overflow-x: auto; }
+        .evaluation-scale { min-width: 760px; min-height: 250px; }
         .evaluation-inputs { grid-template-columns: 1fr; min-width: 0; }
     }
 {% endblock %}
@@ -89,15 +92,18 @@
             <article class="panel-card evaluation-card fingerprint-card {{ current_strategy.category }}">
                 <div class="evaluation-scale" role="radiogroup" aria-label="Rating for {{ current_strategy.name }}">
                     {% for value in range(10) %}
-                        <label class="evaluation-point{% if strategy_definitions.get(value) %} has-definition{% if value % 2 == 1 %} definition-top{% endif %}{% endif %}"{% if strategy_definitions.get(value) %} title="{{ strategy_definitions.get(value) }}"{% endif %}>
+                        <label class="evaluation-point{% if strategy_definitions.get(value) %} has-definition{% endif %}"{% if strategy_definitions.get(value) %} title="{{ strategy_definitions.get(value) }}"{% endif %}>
                             <input type="radio" name="scale_value" value="{{ value }}" required{% if saved_rating and saved_rating.scale_value == value %} checked{% endif %}>
                             <span class="evaluation-number">{{ value }}</span>
                             {% if strategy_definitions.get(value) %}<span class="evaluation-definition">{{ strategy_definitions.get(value) }}</span>{% endif %}
                         </label>
                     {% endfor %}
                 </div>
-                <p class="rating-result" aria-live="polite">Your rating is: <output id="ratingValue">{{ saved_rating.scale_value if saved_rating else '—' }}</output></p>
                 <div class="evaluation-inputs">
+                    <div class="selected-rating" aria-live="polite">
+                        Your selected scale is:
+                        <output id="selectedScale">{{ saved_rating.scale_value if saved_rating else '—' }}</output>
+                    </div>
                     <label class="confidence-field">
                         How confident are you in this rating?
                         <span class="confidence-row">
@@ -106,12 +112,12 @@
                         </span>
                     </label>
                     <label class="comments-field">
-                        Comments
+                        Give your comments
                         <textarea name="comments" maxlength="2000" placeholder="Add context for your rating (optional)...">{{ saved_rating.comments if saved_rating else '' }}</textarea>
                     </label>
                 </div>
                 {% if request.args.get('error') %}<p class="evaluation-error" role="alert">{{ request.args.get('error') }}</p>{% endif %}
-                <div class="evaluation-navigation">
+                <div class="evaluation-navigation" aria-label="LSC evaluation navigation">
                     {% if previous_strategy %}
                         <a class="question-nav-button" href="{{ url_for('fingerprint_evaluate', strategy_id=previous_strategy.id) }}">Previous</a>
                     {% else %}<span class="question-nav-button disabled">Previous</span>{% endif %}
@@ -123,10 +129,10 @@
         <script>
             const confidenceSlider = document.getElementById('confidenceSlider');
             const confidenceValue = document.getElementById('confidenceValue');
-            const ratingValue = document.getElementById('ratingValue');
+            const selectedScale = document.getElementById('selectedScale');
             confidenceSlider?.addEventListener('input', () => { confidenceValue.value = `${confidenceSlider.value}%`; });
             document.querySelectorAll('input[name="scale_value"]').forEach((input) => {
-                input.addEventListener('change', () => { ratingValue.value = input.value; });
+                input.addEventListener('change', () => { selectedScale.value = input.value; });
             });
         </script>
     {% else %}

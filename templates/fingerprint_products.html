@@ -26,6 +26,11 @@
         border: 2px solid rgba(255,255,255,.7); border-radius: 10px;
         background: rgba(255,255,255,.92); color: #111; font-weight: 800; text-align: center;
     }
+    .product-option span small { display: block; margin-top: 5px; color: #59636e; font-size: 11px; font-weight: 700; }
+    .product-option.incomplete span { border-color: #f0b44d; background: #fff5dc; }
+    .product-option.incomplete span small { color: #8a5400; }
+    .product-option.complete span { border-color: #70b979; background: #edf8ee; }
+    .product-option.just-completed span { box-shadow: 0 0 0 4px rgba(101,200,109,.42); }
     .product-option input:checked + span { border-color: #65c86d; background: #e8f7e8; box-shadow: 0 0 0 3px rgba(101,200,109,.3); }
     .product-option input:focus-visible + span { outline: 3px solid #fff; outline-offset: 2px; }
     .product-select-error { min-height: 20px; margin: 0; color: #fff; font-weight: 800; text-align: center; }
@@ -42,9 +47,13 @@
         {% if products %}
             <div class="product-options" role="radiogroup" aria-label="Products">
                 {% for product in products %}
-                    <label class="product-option">
+                    {% set progress = product_progress.get(product.id, {'rated': 0, 'total': 0, 'complete': false}) %}
+                    <label class="product-option {{ 'complete' if progress.complete else 'incomplete' }}{% if completed_product_id == product.id %} just-completed{% endif %}">
                         <input type="radio" name="product_id" value="{{ product.id }}" required>
-                        <span>{{ product.name }}</span>
+                        <span>
+                            <strong>{{ product.name }}</strong>
+                            <small>{% if progress.complete %}Evaluation complete{% elif progress.rated %}Still to evaluate · {{ progress.rated }}/{{ progress.total }} rated{% else %}Not evaluated yet{% endif %}</small>
+                        </span>
                     </label>
                 {% endfor %}
             </div>

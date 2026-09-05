@@ -533,6 +533,7 @@ def fingerprint_start():
 def fingerprint_select_product():
     respondent_id = session.get("fingerprint_respondent_id")
     workshop_id = session.get("fingerprint_workshop_id")
+    completed_product_id = request.args.get("completed_product", type=int)
     if respondent_id is None or workshop_id is None:
         return redirect(url_for("fingerprint_start"))
     with get_db() as conn:
@@ -541,6 +542,49 @@ def fingerprint_select_product():
             "SELECT id, name FROM workshop_products WHERE workshop_id = ? ORDER BY name COLLATE NOCASE, id",
             (workshop_id,),
         ).fetchall()
+        total_strategies = conn.execute(
+            """
+            SELECT COUNT(*)
+            FROM workshop_comparison_responses AS r
+            WHERE r.workshop_id = ?
+              AND EXISTS (
+                  SELECT 1
+                  FROM workshop_strategy_scale_definitions AS d
+                  WHERE d.strategy_response_id = r.id
+              )
+            """,
+            (workshop_id,),
+        ).fetchone()[0]
+        rated_counts = {
+            row["product_id"]: row["rated_count"]
+            for row in conn.execute(
+                """
+                SELECT ratings.product_id, COUNT(DISTINCT ratings.strategy_response_id) AS rated_count
+                FROM fingerprint_product_ratings AS ratings
+                JOIN workshop_products AS product ON product.id = ratings.product_id
+                JOIN workshop_comparison_responses AS strategy
+                  ON strategy.id = ratings.strategy_response_id
+                WHERE ratings.respondent_id = ?
+                  AND product.workshop_id = ?
+                  AND strategy.workshop_id = ?
+                  AND EXISTS (
+                      SELECT 1
+                      FROM workshop_strategy_scale_definitions AS d
+                      WHERE d.strategy_response_id = strategy.id
+                  )
+                GROUP BY ratings.product_id
+                """,
+                (respondent_id, workshop_id, workshop_id),
+            ).fetchall()
+        }
+        product_progress = {
+            product["id"]: {
+                "rated": rated_counts.get(product["id"], 0),
+                "total": total_strategies,
+                "complete": total_strategies > 0 and rated_counts.get(product["id"], 0) >= total_strategies,
+            }
+            for product in products
+        }
         if request.method == "POST":
             product_id = request.form.get("product_id", type=int)
             product = conn.execute(
@@ -551,8 +595,12 @@ def fingerprint_select_product():
                 session["fingerprint_product_id"] = product["id"]
                 return redirect(url_for("fingerprint_evaluate"))
             return render_template("fingerprint_products.html", workshop=workshop, products=products,
+                                   product_progress=product_progress,
+                                   completed_product_id=completed_product_id,
                                    error="Select a product to continue.")
-    return render_template("fingerprint_products.html", workshop=workshop, products=products)
+    return render_template("fingerprint_products.html", workshop=workshop, products=products,
+                           product_progress=product_progress,
+                           completed_product_id=completed_product_id)
 
 
 @app.route("/fingerprint/evaluate", methods=["GET", "POST"])
@@ -629,7 +677,10 @@ def fingerprint_evaluate():
                 )
                 ordered_ids = [row["id"] for row in strategies]
                 current_index = ordered_ids.index(strategy_id)
-                next_id = ordered_ids[current_index + 1] if current_index + 1 < len(ordered_ids) else strategy_id
+                if current_index + 1 >= len(ordered_ids):
+                    session.pop("fingerprint_product_id", None)
+                    return redirect(url_for("fingerprint_select_product", completed_product=product_id))
+                next_id = ordered_ids[current_index + 1]
                 return redirect(url_for("fingerprint_evaluate", strategy_id=next_id, saved=1))
             return redirect(url_for("fingerprint_evaluate", error="Select a scale value before saving."))
 
