@@ -59,6 +59,7 @@
             </div>
             <p class="product-select-error" role="alert">{{ error or '' }}</p>
             <button class="product-select-submit" type="submit">Start fingerprint</button>
+            {% if has_ratings %}<a class="product-select-submit" href="{{ url_for('fingerprint_results') }}" style="display:grid;place-items:center;text-decoration:none">View results</a>{% endif %}
         {% else %}
             <div class="no-products">No products have been added by the workshop manager yet.</div>
         {% endif %}

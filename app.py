@@ -600,7 +600,68 @@ def fingerprint_select_product():
                                    error="Select a product to continue.")
     return render_template("fingerprint_products.html", workshop=workshop, products=products,
                            product_progress=product_progress,
-                           completed_product_id=completed_product_id)
+                           completed_product_id=completed_product_id,
+                           has_ratings=any(progress["rated"] for progress in product_progress.values()))
+
+
+@app.route("/fingerprint/results")
+def fingerprint_results():
+    respondent_id = session.get("fingerprint_respondent_id")
+    workshop_id = session.get("fingerprint_workshop_id")
+    if respondent_id is None or workshop_id is None:
+        return redirect(url_for("fingerprint_start"))
+
+    with get_db() as conn:
+        respondent = conn.execute(
+            """
+            SELECT r.id, r.display_name, w.title
+            FROM fingerprint_respondents AS r
+            JOIN workshops AS w ON w.id = r.workshop_id
+            WHERE r.id = ? AND r.workshop_id = ?
+            """,
+            (respondent_id, workshop_id),
+        ).fetchone()
+        if respondent is None:
+            return redirect(url_for("fingerprint_start"))
+
+        rows = conn.execute(
+            """
+            SELECT product.id AS product_id, product.name AS product_name,
+                   strategy.id AS criterion_id,
+                   COALESCE(NULLIF(details.lsc, ''), strategy.response_text) AS criterion_name,
+                   rating.scale_value
+            FROM fingerprint_product_ratings AS rating
+            JOIN workshop_products AS product ON product.id = rating.product_id
+            JOIN workshop_comparison_responses AS strategy
+              ON strategy.id = rating.strategy_response_id
+            LEFT JOIN workshop_strategy_details AS details
+              ON details.strategy_response_id = strategy.id
+            LEFT JOIN lifecycle_stages AS stage
+              ON stage.id = COALESCE(details.lifecycle_stage_id, strategy.lifecycle_stage_id)
+            WHERE rating.respondent_id = ?
+              AND product.workshop_id = ?
+              AND strategy.workshop_id = ?
+            ORDER BY product.name COLLATE NOCASE, product.id,
+                     stage.sort_order, stage.id, strategy.id
+            """,
+            (respondent_id, workshop_id, workshop_id),
+        ).fetchall()
+
+    chart_data = [
+        {
+            "productId": row["product_id"],
+            "product": row["product_name"],
+            "criterionId": row["criterion_id"],
+            "criterion": row["criterion_name"],
+            "value": row["scale_value"],
+        }
+        for row in rows
+    ]
+    return render_template(
+        "fingerprint_results.html",
+        respondent=respondent,
+        chart_data=chart_data,
+    )
 
 
 @app.route("/fingerprint/evaluate", methods=["GET", "POST"])
@@ -679,7 +740,7 @@ def fingerprint_evaluate():
                 current_index = ordered_ids.index(strategy_id)
                 if current_index + 1 >= len(ordered_ids):
                     session.pop("fingerprint_product_id", None)
-                    return redirect(url_for("fingerprint_select_product", completed_product=product_id))
+                    return redirect(url_for("fingerprint_results", completed_product=product_id))
                 next_id = ordered_ids[current_index + 1]
                 return redirect(url_for("fingerprint_evaluate", strategy_id=next_id, saved=1))
             return redirect(url_for("fingerprint_evaluate", error="Select a scale value before saving."))
