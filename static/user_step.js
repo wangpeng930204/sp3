@@ -1,3 +1,23 @@
+    document.querySelectorAll("[data-edit-saved-strategy]").forEach(button => {
+        button.addEventListener("click", () => {
+            const form = document.getElementById(button.getAttribute("aria-controls"));
+            if (!form) return;
+            form.reset();
+            const entry = JSON.parse(button.dataset.entry);
+            form.elements.namedItem("entry_id").value = entry.id;
+            ["lsc", "measurement", "comments", "lifecycle_stage_id", "category"].forEach(name => {
+                form.elements.namedItem(name).value = entry[name];
+            });
+            form.querySelector('[type="submit"]').textContent = "Save changes";
+            form.elements.namedItem("lsc").focus();
+            form.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        });
+    });
+
+    document.getElementById("strategyForm")?.addEventListener("reset", event => {
+        event.target.querySelector('[type="submit"]').textContent = "Save new LSC";
+    });
+
     const stepInfoButton = document.getElementById("stepInfoButton");
     const stepDescriptionPopover = document.getElementById("stepDescriptionPopover");
     stepInfoButton?.addEventListener("click", event => {
@@ -16,6 +36,7 @@
     document.querySelectorAll(".step3-source-window").forEach(sourceWindow => {
         const track = sourceWindow.querySelector(".step3-source-track");
         const modeSwitch = sourceWindow.querySelector("[data-source-mode-switch]");
+        const currentCard = track.querySelector("[data-current-source]") || track.firstElementChild;
         let panX = 0;
         let sourceZoom = 1;
         let startX = 0;
@@ -58,12 +79,11 @@
             sourceWindow.releasePointerCapture(event.pointerId);
             const selectedCard = event.target.closest("[data-source-card]");
             if (!moved && sourceWindow.classList.contains("overview") && selectedCard) {
-                const selectedIndex = [...track.children].indexOf(selectedCard);
                 sourceWindow.classList.remove("overview");
                 sourceZoom = 1;
                 updateSourceModeSwitch();
                 requestAnimationFrame(() => {
-                    panX = -selectedIndex * sourceWindow.clientWidth;
+                    panX = -currentCard.offsetLeft;
                     applySourceTransform();
                 });
             }
@@ -74,13 +94,10 @@
             sourceWindow.classList.remove("is-grabbing");
         });
 
-        const zoomSourceWindow = (nextZoom, pointerX = sourceWindow.clientWidth / 2) => {
-            const previousZoom = sourceZoom;
+        const zoomSourceWindow = (nextZoom) => {
             sourceZoom = Math.max(0.55, Math.min(1, nextZoom));
             sourceWindow.classList.toggle("overview", sourceZoom < 0.9);
-            panX = pointerX - (pointerX - panX) * (sourceZoom / previousZoom);
-            const minPan = Math.min(0, sourceWindow.clientWidth - track.scrollWidth * sourceZoom);
-            panX = Math.max(minPan, Math.min(0, panX));
+            panX = sourceWindow.classList.contains("overview") ? 0 : -currentCard.offsetLeft;
             applySourceTransform();
             updateSourceModeSwitch();
         };
@@ -105,6 +122,14 @@
             zoomSourceWindow(sourceWindow.classList.contains("overview") ? 1 : 0.62);
         });
         updateSourceModeSwitch();
+        const restoreSourceFocus = () => {
+            if (!sourceWindow.classList.contains("overview")) {
+                panX = -currentCard.offsetLeft;
+                applySourceTransform();
+            }
+        };
+        new ResizeObserver(restoreSourceFocus).observe(sourceWindow);
+        restoreSourceFocus();
 
     });
 
@@ -162,6 +187,20 @@
     if (scalePoints.length && scaleDefinition && scaleDefinitionLabel) {
         const definitions = new Map(scalePoints.map(point => [point.dataset.scaleValue, point.dataset.definition || ""]));
         let activeScale = document.querySelector('.scale-point input:checked')?.value || "0";
+        scaleDefinition.form.addEventListener("submit", () => {
+            definitions.set(activeScale, scaleDefinition.value);
+            definitions.forEach((definition, value) => {
+                const name = `definition_${value}`;
+                let input = scaleDefinition.form.elements.namedItem(name);
+                if (!input) {
+                    input = document.createElement("input");
+                    input.type = "hidden";
+                    input.name = name;
+                    scaleDefinition.form.appendChild(input);
+                }
+                input.value = definition;
+            });
+        });
 
         scalePoints.forEach(point => {
             point.querySelector("input").addEventListener("change", event => {

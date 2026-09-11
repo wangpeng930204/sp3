@@ -86,6 +86,7 @@ def merge_guest_workshop_data(conn, workshop_id, shared_user_id):
     strategy_ids = "SELECT id FROM workshop_comparison_responses WHERE workshop_id = ?"
     for table in (
         "workshop_strategy_details",
+        "workshop_strategy_entries",
         "workshop_selected_strategies",
         "workshop_strategy_scale_choices",
         "workshop_strategy_scale_definitions",
@@ -309,6 +310,30 @@ def init_db():
                 FOREIGN KEY (strategy_response_id) REFERENCES workshop_comparison_responses (id) ON DELETE CASCADE,
                 FOREIGN KEY (lifecycle_stage_id) REFERENCES lifecycle_stages (id) ON DELETE CASCADE
             )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS workshop_strategy_entries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                strategy_response_id INTEGER NOT NULL REFERENCES workshop_comparison_responses(id) ON DELETE CASCADE,
+                lsc TEXT NOT NULL DEFAULT '',
+                measurement TEXT NOT NULL DEFAULT '',
+                comments TEXT NOT NULL DEFAULT '',
+                lifecycle_stage_id INTEGER NOT NULL REFERENCES lifecycle_stages(id),
+                category TEXT NOT NULL CHECK (category IN ('social', 'ecological', 'economic'))
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO workshop_strategy_entries
+                (user_id, strategy_response_id, lsc, measurement, comments, lifecycle_stage_id, category)
+            SELECT d.user_id, d.strategy_response_id, d.lsc, d.measurement, d.comments, d.lifecycle_stage_id, d.category
+            FROM workshop_strategy_details AS d
+            WHERE NOT EXISTS (SELECT 1 FROM workshop_strategy_entries AS e
+                              WHERE e.user_id = d.user_id AND e.strategy_response_id = d.strategy_response_id)
             """
         )
         conn.execute(
@@ -605,7 +630,9 @@ def fingerprint_select_product():
 
 
 @app.route("/fingerprint/results")
-def fingerprint_results():
+@app.route("/fingerprint/results/v1", endpoint="fingerprint_results_v1", defaults={"version": "v1"})
+@app.route("/fingerprint/results/v2", endpoint="fingerprint_results_v2", defaults={"version": "v2"})
+def fingerprint_results(version="v2"):
     respondent_id = session.get("fingerprint_respondent_id")
     workshop_id = session.get("fingerprint_workshop_id")
     if respondent_id is None or workshop_id is None:
@@ -629,8 +656,13 @@ def fingerprint_results():
             SELECT product.id AS product_id, product.name AS product_name,
                    strategy.id AS criterion_id,
                    COALESCE(NULLIF(details.lsc, ''), strategy.response_text) AS criterion_name,
-                   rating.scale_value
+                   rating.scale_value, rating.confidence, rating.comments, rating.updated_at,
+                   strategy.response_text AS challenge,
+                   COALESCE(details.category, strategy.category) AS category,
+                   stage.name AS lifecycle_stage,
+                   evaluator.id AS respondent_id, evaluator.display_name AS respondent_name
             FROM fingerprint_product_ratings AS rating
+            JOIN fingerprint_respondents AS evaluator ON evaluator.id = rating.respondent_id
             JOIN workshop_products AS product ON product.id = rating.product_id
             JOIN workshop_comparison_responses AS strategy
               ON strategy.id = rating.strategy_response_id
@@ -638,13 +670,13 @@ def fingerprint_results():
               ON details.strategy_response_id = strategy.id
             LEFT JOIN lifecycle_stages AS stage
               ON stage.id = COALESCE(details.lifecycle_stage_id, strategy.lifecycle_stage_id)
-            WHERE rating.respondent_id = ?
+            WHERE evaluator.workshop_id = ?
               AND product.workshop_id = ?
               AND strategy.workshop_id = ?
             ORDER BY product.name COLLATE NOCASE, product.id,
                      stage.sort_order, stage.id, strategy.id
             """,
-            (respondent_id, workshop_id, workshop_id),
+            (workshop_id, workshop_id, workshop_id),
         ).fetchall()
 
     chart_data = [
@@ -654,6 +686,14 @@ def fingerprint_results():
             "criterionId": row["criterion_id"],
             "criterion": row["criterion_name"],
             "value": row["scale_value"],
+            "userId": row["respondent_id"],
+            "user": row["respondent_name"],
+            "confidence": row["confidence"],
+            "comments": row["comments"],
+            "updatedAt": row["updated_at"],
+            "challenge": row["challenge"],
+            "category": row["category"],
+            "lifecycleStage": row["lifecycle_stage"],
         }
         for row in rows
     ]
@@ -661,6 +701,7 @@ def fingerprint_results():
         "fingerprint_results.html",
         respondent=respondent,
         chart_data=chart_data,
+        chart_script=f"js/fingerprint_results_{version}.js",
     )
 
 
@@ -740,7 +781,7 @@ def fingerprint_evaluate():
                 current_index = ordered_ids.index(strategy_id)
                 if current_index + 1 >= len(ordered_ids):
                     session.pop("fingerprint_product_id", None)
-                    return redirect(url_for("fingerprint_results", completed_product=product_id))
+                    return redirect(url_for("fingerprint_select_product", completed_product=product_id))
                 next_id = ordered_ids[current_index + 1]
                 return redirect(url_for("fingerprint_evaluate", strategy_id=next_id, saved=1))
             return redirect(url_for("fingerprint_evaluate", error="Select a scale value before saving."))
@@ -1475,7 +1516,10 @@ def user_workshop():
                 (workshop["id"],),
             ).fetchall()
 
-    return render_template("user.html", workshop=workshop, steps=steps)
+    step_descriptions = {row["step_number"]: row["description"] for row in steps}
+    return render_template(
+        "user.html", workshop=workshop, steps=steps, step_descriptions=step_descriptions
+    )
 
 
 @app.route("/user-step")
@@ -1537,6 +1581,7 @@ def user_step():
         classified_responses = {}
         solution_responses = {}
         strategy_details = {}
+        strategy_entries = {}
         selected_strategy_ids = set()
         strategy_scale_choices = {}
         strategy_scale_definitions = {}
@@ -1696,6 +1741,13 @@ def user_step():
                     (user_id, workshop["id"]),
                 ).fetchall()
                 strategy_details = {row["strategy_response_id"]: row for row in detail_rows}
+                for entry in conn.execute(
+                    """SELECT e.* FROM workshop_strategy_entries AS e
+                       JOIN workshop_comparison_responses AS r ON r.id = e.strategy_response_id
+                       WHERE e.user_id = ? AND r.workshop_id = ? ORDER BY e.id""",
+                    (user_id, workshop["id"]),
+                ).fetchall():
+                    strategy_entries.setdefault(entry["strategy_response_id"], []).append(entry)
                 if detail_rows:
                     completed_step_numbers.add(4)
 
@@ -1726,10 +1778,12 @@ def user_step():
             if current_step == 3:
                 paired_rows = conn.execute(
                     """
-                    SELECT id, step_number, lifecycle_stage_id, question_text, guidance
-                    FROM workshop_questions
-                    WHERE workshop_id = ? AND step_number IN (1, 2)
-                    ORDER BY step_number, datetime(created_at), id
+                    SELECT q.id, q.step_number, q.lifecycle_stage_id, q.question_text, q.guidance,
+                           s.name AS stage_name
+                    FROM workshop_questions AS q
+                    JOIN lifecycle_stages AS s ON s.id = q.lifecycle_stage_id
+                    WHERE q.workshop_id = ? AND q.step_number IN (1, 2)
+                    ORDER BY q.step_number, s.sort_order, s.id, datetime(q.created_at), q.id
                     """,
                     (workshop["id"],),
                 ).fetchall()
@@ -1820,6 +1874,7 @@ def user_step():
         classified_responses=classified_responses,
         solution_responses=solution_responses,
         strategy_details=strategy_details,
+        strategy_entries=strategy_entries,
         selected_strategy_ids=selected_strategy_ids,
         strategy_scale_choices=strategy_scale_choices,
         strategy_scale_definitions=strategy_scale_definitions,
@@ -2018,6 +2073,7 @@ def save_strategy_details(strategy_id):
     comments = request.form.get("comments", "").strip()
     lifecycle_stage_id = request.form.get("lifecycle_stage_id", type=int)
     category = request.form.get("category", "")
+    entry_id = request.form.get("entry_id", type=int)
 
     with get_db() as conn:
         strategy = conn.execute(
@@ -2038,6 +2094,23 @@ def save_strategy_details(strategy_id):
             return redirect(url_for("user_step", workshop_id=strategy["workshop_id"], step=4,
                                     stage_id=strategy["lifecycle_stage_id"], question_id=strategy_id,
                                     classification_required=1))
+
+        if entry_id is not None:
+            updated = conn.execute(
+                """UPDATE workshop_strategy_entries
+                   SET lsc = ?, measurement = ?, comments = ?, lifecycle_stage_id = ?, category = ?
+                   WHERE id = ? AND user_id = ? AND strategy_response_id = ?""",
+                (lsc, measurement, comments, lifecycle_stage_id, category, entry_id, user_id, strategy_id),
+            )
+            if updated.rowcount != 1:
+                return ("Saved response not found", 404)
+        else:
+            conn.execute(
+                """INSERT INTO workshop_strategy_entries
+                   (user_id, strategy_response_id, lsc, measurement, comments, lifecycle_stage_id, category)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (user_id, strategy_id, lsc, measurement, comments, lifecycle_stage_id, category),
+            )
 
         conn.execute(
             """
@@ -2092,8 +2165,13 @@ def save_strategy_scale(strategy_id):
         return redirect(url_for("login"))
     scale_value = request.form.get("scale_value", type=int)
     definition = request.form.get("definition", "").strip()
+    definitions = {
+        value: request.form[f"definition_{value}"].strip()
+        for value in range(10) if f"definition_{value}" in request.form
+    }
     if scale_value is None or not 0 <= scale_value <= 9:
         return redirect(url_for("user_step", step=5))
+    definitions[scale_value] = definition
 
     with get_db() as conn:
         strategy = conn.execute(
@@ -2120,7 +2198,7 @@ def save_strategy_scale(strategy_id):
             """,
             (user_id, strategy_id, scale_value),
         )
-        conn.execute(
+        conn.executemany(
             """
             INSERT INTO workshop_strategy_scale_definitions
                 (user_id, strategy_response_id, scale_value, definition)
@@ -2129,7 +2207,7 @@ def save_strategy_scale(strategy_id):
                 definition = excluded.definition,
                 updated_at = CURRENT_TIMESTAMP
             """,
-            (user_id, strategy_id, scale_value, definition),
+            [(user_id, strategy_id, value, text) for value, text in definitions.items()],
         )
 
     return redirect(url_for("user_step", workshop_id=strategy["workshop_id"], step=5,

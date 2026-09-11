@@ -539,13 +539,15 @@
     }
     .step3-input-panel {
         display: flex;
+        flex-direction: column;
         align-items: stretch;
         padding: 18px;
-        overflow: hidden;
+        overflow-y: auto;
     }
     .step3-input-panel .solution-form {
+        flex: 1 0 260px;
         width: 100%;
-        height: 100%;
+        height: auto;
         min-height: 0;
         margin: 0;
         grid-template-rows: minmax(0, 1fr) auto auto;
@@ -558,6 +560,7 @@
     }
     .step3-input-panel .solution-submit-row { grid-template-columns: 1fr; }
     .step3-input-panel .save-response { width: 100%; }
+    .step3-input-panel .step3-saved-responses { margin: 0 0 18px; }
     .step3-columns > .step3-panel:last-child { box-shadow: 0 12px 28px rgba(0, 0, 0, .1); }
     .step3-source-window {
         position: relative; min-height: 0; flex: 1; overflow: hidden; border-radius: 12px;
@@ -573,19 +576,20 @@
     }
     .step3-source-window.is-grabbing { cursor: grabbing; }
     .step3-source-track {
-        height: 100%; display: flex; gap: 12px; transform-origin: 0 0;
+        position: relative; height: 100%; display: flex; gap: 12px; transform-origin: 0 0;
         transition: transform 220ms ease;
     }
     .step3-source-window.is-grabbing .step3-source-track { transition: none; }
     .step3-source-card {
-        min-width: 100%; height: 100%; padding: 4px; overflow-y: auto;
+        flex-shrink: 0; min-width: 100%; width: 100%; height: 100%; padding: 4px; overflow-y: auto;
         border: 0; border-radius: 12px; background: transparent;
     }
     .step3-source-window.overview .step3-source-card {
-        min-width: 210px; width: 210px; height: 190px; padding: 14px; overflow: hidden;
+        min-width: 210px; width: 210px; height: 100%; padding: 14px; overflow-y: auto;
         border: 1px solid #dfd1ca; background: #fff; cursor: pointer;
     }
     .step3-source-window.overview .step3-source-card .note-guidance { display: none; }
+    .step3-source-window.overview .source-focus-empty { display: none; }
     .step3-window-hint { margin: 10px 0 0; color: #66727c; font-size: 11px; text-align: center; }
     .paired-answer {
         margin-top: 18px;
@@ -643,7 +647,7 @@
     .solution-submit-row .save-response { width: 100%; min-height: 48px; }
 
     .overview-solution-list { display: grid; gap: 8px; margin-top: auto; padding-top: 12px; }
-    .overview-solution-list .solution-card { min-height: 0; }
+    .overview-solution-list .classified-card { min-height: 0; box-shadow: none; }
 
     .step4-workspace {
         position: absolute;
@@ -653,7 +657,6 @@
     }
     .step4-card {
         width: min(100%, 1000px);
-        min-height: 100%;
         margin: 0 auto;
         padding: 20px 24px;
         border: 1px solid #e5d8d4;
@@ -671,8 +674,14 @@
     .strategy-source.social { background: #FDE4AF; }
     .strategy-source.ecological { background: #CCEBC5; }
     .strategy-source.economic { background: #B3CDE3; }
-    .strategy-form { display: grid; gap: 12px; }
-    .strategy-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .strategy-saved-list { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 0 0 18px; }
+    .strategy-saved-name { max-width: 100%; padding: 8px 14px; font: inherit; font-size: 13px; font-weight: 700; text-align: left; overflow-wrap: anywhere; cursor: pointer; }
+    .strategy-saved-name:hover { filter: brightness(.97); }
+    .strategy-saved-name:focus-visible { outline: 3px solid #245a96; outline-offset: 3px; }
+    .strategy-form { display: grid; gap: 20px; padding: 20px; border: 1px solid #e5d8d4; border-radius: 14px; background: #fffaf7; }
+    .strategy-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .strategy-field:first-child { grid-column: 1 / -1; }
+    .strategy-field:first-child textarea { min-height: 54px; }
     .strategy-field { display: grid; gap: 7px; }
     .strategy-field textarea { min-height: 92px; }
     .strategy-classifications { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(260px, .65fr); gap: 14px; }
@@ -699,6 +708,7 @@
     .strategy-choice.ecological span { background: #CCEBC5; }
     .strategy-choice.economic span { background: #B3CDE3; }
     .strategy-choice input:checked + span { border-color: #173f72; box-shadow: inset 0 0 0 2px rgba(255,255,255,.75); }
+    .strategy-choice input:focus-visible + span { outline: 3px solid #245a96; outline-offset: 2px; }
     .strategy-form-footer { display: flex; justify-content: flex-end; align-items: center; gap: 12px; }
     .strategy-detail-summary { display: grid; gap: 7px; margin-top: auto; padding-top: 14px; font-size: 13px; }
     .strategy-detail-summary p { margin: 0; }
@@ -969,6 +979,7 @@
         object-fit: contain;
     }
     .classified-text { min-width: 0; margin: 0; font-size: 14px; line-height: 1.45; white-space: pre-wrap; }
+    .classified-text + .classified-text { margin-top: 10px; }
     .classified-delete { margin-left: auto; border: 0; background: transparent; color: #7b2525; cursor: pointer; font-weight: 800; }
     .overview-classified-list { display: grid; gap: 8px; margin-top: auto; padding-top: 12px; }
     .overview-classified-list .classified-card { box-shadow: none; }

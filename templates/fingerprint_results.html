@@ -6,17 +6,17 @@
     <title>Fingerprint results | Digital SPD</title>
     <style>
         body { margin: 0; background: #fff; font-family: Arial, sans-serif; }
-        #fingerprint-chart { width: 100%; overflow-x: auto; }
-        #fingerprint-chart svg { display: block; }
+        #fingerprint-chart { width: 100%; height: 100vh; height: 100dvh; overflow: hidden; }
+        #fingerprint-chart svg { display: block; max-width: 100%; }
         .axis { color: #333; }
-        .axis text { font-size: 14px; }
+        .axis text { font-size: 12px; }
     </style>
 </head>
 <body>
     <div id="fingerprint-chart"></div>
     <script id="fingerprint-data" type="application/json">{{ chart_data | tojson }}</script>
     <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
-    <script src="{{ url_for('static', filename='js/fingerprint_results.js') }}"></script>
+    <script src="{{ url_for('static', filename=chart_script) }}"></script>
 </body>
 </html>
 

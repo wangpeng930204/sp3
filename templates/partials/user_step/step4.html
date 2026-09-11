@@ -1,12 +1,24 @@
-{% set detail = strategy_details.get(current_question.id) %}
+{% set detail = none %}
+{% set saved_entries = (strategy_entries|default({})).get(current_question.id, []) %}
 <section class="step4-workspace" aria-label="Step 4 strategy workspace">
     <article class="step4-card">
-        <h2 class="step3-panel-title">Strategy {{ current_question_number }} · {{ current_question.stage_name }}</h2>
         <p class="strategy-source {{ current_question.category }}">{{ current_question.question_text }}</p>
-        <form class="strategy-form" method="post" action="{{ url_for('save_strategy_details', strategy_id=current_question.id) }}">
+        {% if saved_entries %}
+            <div class="strategy-saved-list" aria-label="Saved responses">
+                <span class="response-label">Saved LSC</span>
+                {% for entry in saved_entries %}
+                <button type="button" class="classified-card strategy-saved-name {{ entry.category }}"
+                        data-edit-saved-strategy data-entry='{{ dict(entry)|tojson }}' aria-controls="strategyForm" title="Load saved details to edit">
+                    {{ entry.lsc or 'Untitled LSC' }}
+                </button>
+                {% endfor %}
+            </div>
+        {% endif %}
+        <form id="strategyForm" class="strategy-form" method="post" action="{{ url_for('save_strategy_details', strategy_id=current_question.id) }}">
+            <input type="hidden" name="entry_id" value="">
             <div class="strategy-fields">
                 <label class="strategy-field">
-                    <span class="response-label">LSC</span>
+                    <span class="response-label">LSC name</span>
                     <textarea class="response-input" name="lsc" placeholder="Enter LSC...">{{ detail.lsc if detail else '' }}</textarea>
                 </label>
                 <label class="strategy-field">
@@ -52,7 +64,8 @@
                 {% elif request.args.get('classification_required') %}
                     <span class="saved-message" role="alert">Select both classifications</span>
                 {% endif %}
-                <button class="save-response" type="submit">Save response</button>
+                <button class="question-nav-button" type="reset">New LSC</button>
+                <button class="save-response" type="submit">Save new LSC</button>
             </div>
         </form>
     </article>

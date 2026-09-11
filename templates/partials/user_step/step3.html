@@ -1,19 +1,25 @@
 {% set paired_step1 = paired_questions.get(1, {}).get(current_question.lifecycle_stage_id) %}
 {% set paired_step2 = paired_questions.get(2, {}).get(current_question.lifecycle_stage_id) %}
-{% set paired_step1_list = paired_question_lists.get(1, {}).get(current_question.lifecycle_stage_id, []) %}
-{% set paired_step2_list = paired_question_lists.get(2, {}).get(current_question.lifecycle_stage_id, []) %}
+{% set paired_step1_list = paired_question_lists.get(1, {}).values()|sum(start=[]) %}
+{% set paired_step2_list = paired_question_lists.get(2, {}).values()|sum(start=[]) %}
 <section class="step3-workspace" aria-label="Step 3 paired solution workspace">
     <div class="step3-columns">
         <article class="step3-panel step3-source-panel">
             {% if paired_step1_list %}
                 <div class="step3-source-window" aria-label="Step 1 question window">
                     <div class="step3-source-tools" aria-label="Step 1 window zoom">
-                        <button class="step3-source-zoom source-mode-switch" type="button" data-source-mode-switch
-                                aria-label="Show Step 1 overview in this window" title="Show overview">▦</button>
+                        <a class="step3-source-zoom source-mode-switch"
+                           href="{{ url_for('user_step', workshop_id=workshop.id, step=1, stage_id=current_question.lifecycle_stage_id, question_id=paired_step1.id if paired_step1 else None, view='overview', return_step=3, return_stage_id=current_question.lifecycle_stage_id) }}"
+                           aria-label="Open Step 1 overview page" title="Open Step 1 overview">▦</a>
                     </div>
                     <div class="step3-source-track">
+                        {% if not paired_step1 %}
+                            <article class="step3-source-card source-focus-empty" data-current-source>
+                                <p class="paired-answer-empty">No Step 1 question is available for this lifecycle stage.</p>
+                            </article>
+                        {% endif %}
                         {% for source_question in paired_step1_list %}
-                            <article class="step3-source-card" data-source-card>
+                            <article class="step3-source-card" data-source-card{% if paired_step1 and source_question.id == paired_step1.id %} data-current-source{% endif %}>
                                 <p class="note-question">{{ source_question.question_text }}</p>
                                 <div class="paired-answer">
                                     <p class="paired-answer-label">Your answer</p>
@@ -24,7 +30,6 @@
                         {% endfor %}
                     </div>
                 </div>
-                <p class="step3-window-hint">Drag to browse the Step 1 overview</p>
             {% else %}
                 <p class="paired-answer-text paired-answer-empty">No Step 1 question is available for this lifecycle stage.</p>
             {% endif %}
@@ -34,12 +39,18 @@
             {% if paired_step2_list %}
                 <div class="step3-source-window" aria-label="Step 2 question window">
                     <div class="step3-source-tools" aria-label="Step 2 window zoom">
-                        <button class="step3-source-zoom source-mode-switch" type="button" data-source-mode-switch
-                                aria-label="Show Step 2 overview in this window" title="Show overview">▦</button>
+                        <a class="step3-source-zoom source-mode-switch"
+                           href="{{ url_for('user_step', workshop_id=workshop.id, step=2, stage_id=current_question.lifecycle_stage_id, question_id=paired_step2.id if paired_step2 else None, view='overview', return_step=3, return_stage_id=current_question.lifecycle_stage_id) }}"
+                           aria-label="Open Step 2 overview page" title="Open Step 2 overview">▦</a>
                     </div>
                     <div class="step3-source-track">
+                        {% if not paired_step2 %}
+                            <article class="step3-source-card source-focus-empty" data-current-source>
+                                <p class="paired-answer-empty">No Step 2 question is available for this lifecycle stage.</p>
+                            </article>
+                        {% endif %}
                         {% for source_question in paired_step2_list %}
-                            <article class="step3-source-card" data-source-card>
+                            <article class="step3-source-card" data-source-card{% if paired_step2 and source_question.id == paired_step2.id %} data-current-source{% endif %}>
                                 <p class="note-question">{{ source_question.question_text }}</p>
                                 <div class="paired-answer">
                                     <p class="paired-answer-label">Your answers</p>
@@ -53,13 +64,17 @@
                         {% endfor %}
                     </div>
                 </div>
-                <p class="step3-window-hint">Drag to browse the Step 2 overview</p>
             {% else %}
                 <p class="paired-answer-text paired-answer-empty">No Step 2 question is available for this lifecycle stage.</p>
             {% endif %}
         </article>
 
         <article class="step3-panel step3-input-panel">
+            {% if solution_responses.get(current_question.id) %}
+                <div class="classified-list step3-saved-responses" aria-label="Saved responses">
+                    {{ solution_cards(solution_responses.get(current_question.id, []), true) }}
+                </div>
+            {% endif %}
             <form class="solution-form" method="post" action="{{ url_for('add_solution_response', stage_id=current_question.lifecycle_stage_id) }}">
                 <input type="hidden" name="workshop_id" value="{{ workshop.id }}">
                 <textarea class="response-input" id="solution-response-{{ current_question.id }}" name="response_text" aria-label="Challenge response" placeholder="Type your challenge..." required></textarea>

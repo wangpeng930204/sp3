@@ -30,12 +30,14 @@
 
 {% macro solution_cards(responses, allow_delete=false) -%}
     {% for response in responses %}
-        <article class="solution-card {{ response.category }}">
-            <p>{{ response.response_text }}</p>
+        <article class="classified-card {{ response.category }}">
+            <p class="classified-text">{{ response.response_text }}</p>
             {% if allow_delete %}
+                <div class="classified-card-head">
                 <form method="post" action="{{ url_for('delete_solution_response', response_id=response.id) }}">
-                    <button class="solution-delete" type="submit" aria-label="Delete response">&times;</button>
+                    <button class="classified-delete" type="submit" aria-label="Delete response">&times;</button>
                 </form>
+                </div>
             {% endif %}
         </article>
     {% endfor %}
@@ -93,7 +95,11 @@
                 </div>
             {% endif %}
 
-            {% if request.args.get('view') == 'overview' and current_step in [1, 2, 3] and current_question %}
+            {% if request.args.get('view') == 'overview' and current_step in [1, 2] and request.args.get('return_step') == '3' %}
+                <a class="overview-mode-switch"
+                   href="{{ url_for('user_step', workshop_id=workshop.id if workshop else None, step=3, stage_id=request.args.get('return_stage_id')|int) }}"
+                   aria-label="Return to Step 3" title="Return to Step 3">⛶</a>
+            {% elif request.args.get('view') == 'overview' and current_step in [1, 2, 3] and current_question %}
                 <a class="overview-mode-switch" href="{{ question_url(current_question) }}"
                    aria-label="Return to focused question" title="Return to focus">⛶</a>
             {% endif %}

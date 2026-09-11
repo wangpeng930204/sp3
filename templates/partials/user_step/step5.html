@@ -26,7 +26,7 @@
                 <label id="scaleDefinitionLabel" for="scaleDefinition">What should be the explanation for Scale {{ selected_scale }}?</label>
                 <textarea class="response-input" id="scaleDefinition" name="definition" placeholder="Write the definition for this scale value...">{{ scale_definitions.get(selected_scale, '') }}</textarea>
                 <div class="scale-definition-footer">
-                    {% if request.args.get('saved') %}<span class="saved-message" role="status">Scale saved</span>{% endif %}
+                    {% if request.args.get('saved') %}<span class="saved-message" role="status">All scale definitions saved</span>{% endif %}
                     <button class="save-response" type="submit">Save response</button>
                 </div>
             </div>
