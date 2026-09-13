@@ -43,11 +43,13 @@ const criteria = Array.from(d3.group(data, row => row.criterionId), ([id, rows])
         name: ratings[0].product,
     })),
 }));
-const overviewBars = buildOverviewBars(criteria);
-const totalOverviewBars = buildOverviewBars([{ id: null, ratings: data }]);
+let overviewBars = buildOverviewBars(criteria);
+let totalOverviewBars = buildOverviewBars([{ id: null, ratings: data }]);
 const criterionNames = new Map(criteria.map(criterion => [criterion.id, criterion.name]));
-const userIds = users.map(user => user.id);
 let selectedRating = null;
+let selectedOverviewRows = null;
+let confidenceMin = 0;
+let confidenceMax = 100;
 const svg = d3.select(host).append('svg')
     .attr('role', 'group')
     .attr('aria-label', 'Y values from 0 to 9, with evaluated products grouped by LSC criterion on the X-axis');
@@ -97,6 +99,7 @@ function renderChart() {
     drawRatings(layout, x, y);
     drawSelectedUserConnection();
     drawLegend(layout);
+    drawOverviewSelection();
 }
 
 // Each confidence group contributes its sum of ratings to the product's stack.
@@ -114,7 +117,7 @@ function buildOverviewBars(criteria) {
                         const value = d3.sum(ratings, row => row.value);
                         const start = total;
                         total += value;
-                        return { confidence, userId, user: ratings[0].user,
+                        return { confidence, rows: ratings, userId, user: ratings[0].user,
                             value, count: ratings.length, start, end: total };
                     })
             );
@@ -197,8 +200,45 @@ function drawHorizontalOverview({ margin, overviewHeight, right, legendWidth }, 
             .attr('stroke', '#17212b').attr('stroke-width', 0.5)
             .attr('tabindex', 0).attr('role', 'img')
             .attr('aria-label', segment => overviewSegmentText(bar, segment))
+            .call(bindOverviewSelection)
             .append('title').text(segment => overviewSegmentText(bar, segment));
     });
+}
+
+// Keep the original rating rows so a segment selects exactly its contributors.
+function bindOverviewSelection(segments) {
+    segments.attr('class', 'overview-segment')
+        .attr('role', 'button')
+        .style('cursor', 'pointer')
+        .on('click', (event, segment) => selectOverviewSegment(segment))
+        .on('keydown', (event, segment) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                selectOverviewSegment(segment);
+            }
+        });
+}
+
+function selectOverviewSegment(segment) {
+    selectedOverviewRows = selectedOverviewRows === segment.rows ? null : segment.rows;
+    drawOverviewSelection();
+}
+
+function drawOverviewSelection() {
+    const matchingRows = new Set(selectedOverviewRows || []);
+    const isSelected = row => matchesConfidence(row) && matchingRows.has(row);
+    const markers = svg.selectAll('.rating-points > circle, .rating-points > path');
+    markers.classed('overview-highlight', isSelected)
+        .style('stroke', row => isSelected(row) ? '#17212b' : null)
+        .style('stroke-width', row => isSelected(row) ? 3 : null)
+        .style('opacity', row => !matchesConfidence(row) ? 0.08
+            : selectedOverviewRows === null ? null : isSelected(row) ? 1 : 0.15);
+    // Bring selected markers in front of other overlapping scores.
+    markers.filter(isSelected).raise();
+    svg.selectAll('.overview-segment')
+        .attr('aria-pressed', segment => segment.rows === selectedOverviewRows)
+        .style('stroke', segment => segment.rows === selectedOverviewRows ? '#17212b' : null)
+        .style('stroke-width', segment => segment.rows === selectedOverviewRows ? 2 : null);
 }
 
 function overviewSegmentText(bar, segment) {
@@ -289,14 +329,21 @@ function drawRatings({ bottom, markerArea }, x, y) {
     criteria.forEach(criterion => {
         const productX = d3.scaleBand().domain(criterion.products.map(product => product.id))
             .range([x(criterion.id), x(criterion.id) + x.bandwidth()]);
-        const userX = d3.scalePoint().domain(userIds)
-            .range([-productX.bandwidth() * 0.3, productX.bandwidth() * 0.3]);
+        const ratingOffsets = new Map();
+        // Center each score on its bar; fan out only ratings sharing that score.
+        d3.group(criterion.ratings, row => row.productId, row => row.value)
+            .forEach(scores => scores.forEach(rows => {
+                const step = Math.min(8, productX.bandwidth() * 0.6 / Math.max(1, rows.length - 1));
+                rows.forEach((row, index) => {
+                    ratingOffsets.set(row, (index - (rows.length - 1) / 2) * step);
+                });
+            }));
 
         svg.append('g').attr('class', 'rating-points')
             .selectAll('path').data(criterion.ratings)
             .join('path')
             .attr('class', 'rating-marker')
-            .attr('data-x', row => productX(row.productId) + productX.bandwidth() / 2 + userX(row.userId))
+            .attr('data-x', row => productX(row.productId) + productX.bandwidth() / 2 + ratingOffsets.get(row))
             .attr('data-y', row => y(row.value))
             .attr('transform', function () {
                 return `translate(${this.getAttribute('data-x')},${this.getAttribute('data-y')})`;
@@ -346,7 +393,7 @@ function drawSelectedUserConnection() {
     // Group rendered centers by product, including product and user offsets.
     const pointsByProduct = new Map();
     if (selectedRating !== null) {
-        dots.filter(row => row.userId === selectedRating.userId)
+        dots.filter(row => row.userId === selectedRating.userId && matchesConfidence(row))
             .each(function (row) {
                 if (!pointsByProduct.has(row.productId)) {
                     pointsByProduct.set(row.productId, []);
@@ -374,15 +421,19 @@ function drawSelectedUserConnection() {
         .attr('stroke-linecap', 'round');
 }
 
-function drawLegend({ margin, right, bottom, legendWidth, markerArea }) {
+function drawLegend(layout) {
+    const { margin, right, bottom, legendWidth, markerArea } = layout;
     const legendTop = margin.top + 20;
-    const legend = svg.append('foreignObject')
+    const legendContainer = svg.append('foreignObject')
         .attr('x', right + 14).attr('y', legendTop)
         .attr('width', legendWidth)
         .attr('height', Math.max(1, bottom - legendTop))
         .append('xhtml:div')
-        .style('height', '100%').style('overflow-y', 'auto')
+        .style('height', '100%').style('display', 'flex').style('flex-direction', 'column')
         .style('font-size', '12px').style('color', '#17212b');
+    const legend = legendContainer.append('div')
+        .style('flex', '1 1 auto').style('min-height', '0').style('overflow-y', 'auto');
+    drawConfidenceFilter(legendContainer, layout);
     legend.append('div').style('font-weight', '700').text('Products / confidence');
     products.forEach(product => {
         const row = legend.append('div').style('margin-top', '12px');
@@ -418,6 +469,81 @@ function drawLegend({ margin, right, bottom, legendWidth, markerArea }) {
     if (data.some(row => row.confidence == null)) {
         legend.append('div').style('margin-top', '16px')
             .text('Unavailable confidence uses the smallest marker; see rating details.');
+    }
+}
+
+function matchesConfidence(row) {
+    // Preserve unavailable confidence only while the full range is selected.
+    return row.confidence == null ? confidenceMin === 0 && confidenceMax === 100
+        : row.confidence >= confidenceMin && row.confidence <= confidenceMax;
+}
+
+function updateConfidenceFilter(layout) {
+    const filtered = data.filter(matchesConfidence);
+    overviewBars = buildOverviewBars(criteria.map(criterion => ({
+        ...criterion, ratings: criterion.ratings.filter(matchesConfidence),
+    })));
+    totalOverviewBars = buildOverviewBars([{ id: null, ratings: filtered }]);
+    selectedOverviewRows = null;
+    svg.selectAll('.overview, .total-overview').remove();
+    const x = d3.scaleBand().domain(criteria.map(criterion => criterion.id))
+        .range([layout.margin.left, layout.right]).paddingInner(0.15).paddingOuter(0.05);
+    drawOverview(layout, x);
+    drawTotalOverview(layout);
+    drawOverviewSelection();
+    drawSelectedUserConnection();
+}
+
+function drawConfidenceFilter(container, layout) {
+    const panel = container.append('div').style('flex', '0 0 auto')
+        .style('padding-top', '10px').style('border-top', '1px solid #cbd5e1');
+    panel.append('div').style('font-weight', '700').text('Confidence filter');
+    const label = panel.append('div').style('margin-top', '4px');
+    const width = Math.max(40, layout.legendWidth);
+    const scale = d3.scaleLinear().domain([0, 100]).range([10, width - 10]).clamp(true);
+    const track = panel.append('svg:svg').attr('width', width).attr('height', 40)
+        .style('display', 'block').style('touch-action', 'none');
+    track.append('line').attr('x1', scale(0)).attr('x2', scale(100))
+        .attr('y1', 20).attr('y2', 20).attr('stroke', '#cbd5e1').attr('stroke-width', 4);
+    const selected = track.append('line').attr('y1', 20).attr('y2', 20)
+        .attr('stroke', '#08739d').attr('stroke-width', 4);
+    const handles = track.selectAll('circle').data(['min', 'max']).join('circle')
+        .attr('cy', 20).attr('r', 8).attr('fill', '#fff')
+        .attr('stroke', '#08739d').attr('stroke-width', 2)
+        .attr('tabindex', 0).attr('role', 'slider').attr('aria-orientation', 'horizontal')
+        .attr('aria-label', bound => `${bound === 'min' ? 'Minimum' : 'Maximum'} confidence`)
+        .style('cursor', 'ew-resize');
+    function refresh() {
+        label.text(`${confidenceMin}% ? ${confidenceMax}%`);
+        selected.attr('x1', scale(confidenceMin)).attr('x2', scale(confidenceMax));
+        handles.attr('cx', bound => scale(bound === 'min' ? confidenceMin : confidenceMax))
+            .attr('aria-valuemin', bound => bound === 'min' ? 0 : confidenceMin)
+            .attr('aria-valuemax', bound => bound === 'min' ? confidenceMax : 100)
+            .attr('aria-valuenow', bound => bound === 'min' ? confidenceMin : confidenceMax)
+            .attr('aria-valuetext', bound => `${bound === 'min' ? confidenceMin : confidenceMax}%`);
+    }
+    function change(bound, value) {
+        value = Math.max(0, Math.min(100, Math.round(value)));
+        if (bound === 'min') confidenceMin = Math.min(value, confidenceMax);
+        else confidenceMax = Math.max(value, confidenceMin);
+        refresh();
+        updateConfidenceFilter(layout);
+    }
+    handles.call(d3.drag().on('drag', (event, bound) => change(bound, scale.invert(event.x))))
+        .on('keydown', (event, bound) => {
+            let value = bound === 'min' ? confidenceMin : confidenceMax;
+            if (['ArrowLeft', 'ArrowDown'].includes(event.key)) value -= 1;
+            else if (['ArrowRight', 'ArrowUp'].includes(event.key)) value += 1;
+            else if (event.key === 'Home') value = bound === 'min' ? 0 : confidenceMin;
+            else if (event.key === 'End') value = bound === 'min' ? confidenceMax : 100;
+            else return;
+            event.preventDefault();
+            change(bound, value);
+        });
+    refresh();
+    if (data.some(row => row.confidence == null)) {
+        panel.append('div').style('font-size', '10px')
+            .text('Unknown confidence included only at 0?100%.');
     }
 }
 
