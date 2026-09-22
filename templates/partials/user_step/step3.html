@@ -77,7 +77,7 @@
             {% endif %}
             <form class="solution-form" method="post" action="{{ url_for('add_solution_response', stage_id=current_question.lifecycle_stage_id) }}">
                 <input type="hidden" name="workshop_id" value="{{ workshop.id }}">
-                <textarea class="response-input" id="solution-response-{{ current_question.id }}" name="response_text" aria-label="Challenge response" placeholder="Type your challenge..." required></textarea>
+                <textarea class="response-input" id="solution-response-{{ current_question.id }}" name="response_text" aria-label="Strategy response" placeholder="Type your strategy..." required></textarea>
                 <div class="solution-submit-row">
                     <div class="solution-category-grid" role="radiogroup" aria-label="Classify this solution">
                         {% for category, category_label in [('social', 'Social'), ('economic', 'Economic'), ('ecological', 'Ecological')] %}

@@ -59,26 +59,6 @@ const svg = d3.select(host).append('svg')
     .attr('role', 'group')
     .attr('aria-label', 'Y values from 0 to 9, with evaluated products grouped by LSC criterion on the X-axis');
 
-function getChartLayout(width, height) {
-    const margin = {
-        // Reserve the upper area for overview charts.
-        top: height * chartTopFraction,
-        // Leave a dedicated column on the right for the chart legend.
-        right: Math.min(300, width * 0.2),
-        bottom: Math.min(110, height * 0.26),
-        left: Math.min(100, width * 0.12),
-    };
-    const overviewHeight = Math.min(250, height * 0.2);
-    // Let totals extend higher while leaving room above the chart.
-    const totalOverviewHeight = Math.min(overviewHeight * 1.5, Math.max(1, margin.top - 24));
-    const legendWidth = Math.min(250, width * 0.2);
-    const bottom = height - margin.bottom;
-    const right = Math.max(margin.left + 1, width - margin.right);
-    // Shared endpoint for the top boundary and horizontal axis line.
-    const boundaryRight = right + legendWidth;
-    return { width, height, margin, overviewHeight, totalOverviewHeight, legendWidth, bottom, right, boundaryRight };
-}
-
 function renderChart() {
     const width = host.clientWidth;
     const height = host.clientHeight;
@@ -145,34 +125,6 @@ function drawOverviewSelection() {
         .attr('aria-pressed', segment => segment.rows === selectedOverviewRows)
         .style('stroke', segment => segment.rows === selectedOverviewRows ? '#17212b' : null)
         .style('stroke-width', segment => segment.rows === selectedOverviewRows ? 2 : null);
-}
-
-function drawBoundaries({ margin, overviewHeight, totalOverviewHeight, bottom, right, boundaryRight }, x) {
-    const dividerPositions = criteria.slice(1).map((criterion, index) =>
-        (x(criteria[index].id) + x.bandwidth() + x(criterion.id)) / 2
-    );
-    svg.append('line')
-        .attr('x1', margin.left)
-        .attr('x2', boundaryRight)
-        .attr('y1', margin.top)
-        .attr('y2', margin.top)
-        .attr('class', 'chart-top-line chart-boundary');
-    svg.append('line')
-        .attr('class', 'chart-right-line chart-boundary')
-        .attr('x1', right)
-        .attr('x2', right)
-        .attr('y1', margin.top - totalOverviewHeight)
-        .attr('y2', bottom);
-    svg.append('g')
-        .attr('class', 'criterion-dividers')
-        .attr('stroke', '#cbd5e1')
-        .selectAll('line')
-        .data(dividerPositions)
-        .join('line')
-        .attr('x1', position => position)
-        .attr('x2', position => position)
-        .attr('y1', margin.top - overviewHeight)
-        .attr('y2', bottom);
 }
 
 function drawAxes({ margin, bottom, boundaryRight, axisBottom = bottom }, x, y) {
@@ -294,8 +246,7 @@ function updateConfidenceFilter(layout) {
 }
 
 function drawConfidenceFilter(container, layout) {
-    const panel = container.append('div').style('flex', '0 0 auto')
-        .style('padding-top', '10px').style('border-top', '1px solid #cbd5e1');
+    const panel = container.append('div').style('flex', '0 0 auto');
     panel.append('div').attr('class', 'confidence-filter-title')
         .text('Select Confidence Range: ');
     const width = Math.max(40, layout.legendWidth);
@@ -406,7 +357,7 @@ function drawRatings({ bottom, labelBottom = bottom }, x, y) {
         // Center each score on its bar; fan out only ratings sharing that score.
         d3.group(criterion.ratings, row => row.productId, row => row.value)
             .forEach(scores => scores.forEach(rows => {
-                const step = Math.min(12, productX.bandwidth() * 0.6 / Math.max(1, rows.length - 1));
+                const step = Math.min(8, productX.bandwidth() * 0.6 / Math.max(1, rows.length - 1));
                 rows.forEach((row, index) => {
                     ratingOffsets.set(row, (index - (rows.length - 1) / 2) * step);
                 });
@@ -496,7 +447,12 @@ function drawLegend(layout) {
         .style('font-size', '12px').style('color', '#17212b');
     const legend = legendContainer.append('div')
         .style('flex', '1 1 auto').style('min-height', '0').style('overflow-y', 'auto');
-    drawConfidenceFilter(legendContainer, layout);
+    const controls = svg.append('foreignObject')
+        .attr('class', 'confidence-controls')
+        .attr('x', layout.legendLeft).attr('y', layout.controlTop)
+        .attr('width', legendWidth).attr('height', layout.controlHeight)
+        .append('xhtml:div').style('height', '100%').style('overflow-y', 'auto');
+    drawConfidenceFilter(controls, layout);
     products.forEach(product => {
         const row = legend.append('div').style('margin-top', '16px');
         row.append('div')
@@ -527,17 +483,86 @@ function drawLegend(layout) {
     }
 }
 
-// Original vertical overview layout.
+// V1 product encoding with the criterion overview below the rating distribution.
+// Totals use a separate, taller panel and an independently labeled scale.
+function getChartLayout(width, height) {
+    const panelHeightReduction = 60;
+    height -= panelHeightReduction;
+    const panelGap = 28;
+    const sideWidth = Math.min(340, width * 0.28);
+    const sideLeft = width - sideWidth - 20;
+    const right = sideLeft - panelGap - 20;
+    const scaleTop = 36; // 20px padding below the shared background top.
+    const overviewBottom = height - 90;
+    const overviewHeight = Math.min(250, height * 0.25); // Bars height.
+    const overviewTop = overviewBottom - overviewHeight;
+    const bottom = overviewTop; // Scale meets Bars at the gray divider.
+    const margin = { top: scaleTop, left: 80, right: width - right, bottom: 80 };
+    // Keep enough room for controls and a scrollable legend on shorter screens.
+    const totalTop = Math.max(overviewTop - 200, 16 + 196 + 12 + 72 + 12 + 20);
+    const totalBottom = overviewBottom;
+    const topPanelTop = 16; // Shared outer top edge for both columns.
+    const controlPanelTop = topPanelTop;
+    const controlPanelHeight = 196;
+    const rightPanelGap = 12;
+    const legendPanelTop = controlPanelTop + controlPanelHeight + rightPanelGap;
+    const globalPanelTop = totalTop - 20;
+    const legendPanelHeight = globalPanelTop - rightPanelGap - legendPanelTop;
+    return {
+        width, height, margin, bottom, right, boundaryRight: right,
+        topPanelTop, controlPanelTop, controlPanelHeight,
+        legendPanelTop, legendPanelHeight, globalPanelTop,
+        overviewTop, overviewBottom, overviewHeight,
+        axisBottom: overviewBottom, labelBottom: overviewBottom,
+        sideLeft, sideWidth, totalTop, totalBottom,
+        controlTop: controlPanelTop + 10, controlHeight: controlPanelHeight - 20,
+        legendLeft: sideLeft + 20, legendTop: legendPanelTop + 10,
+        legendWidth: sideWidth - 40, legendHeight: legendPanelHeight - 20,
+    };
+}
+
+function drawBoundaries(layout, x) {
+    const { height, margin, bottom, overviewTop, overviewBottom, right, sideLeft, sideWidth } = layout;
+    // Insert backgrounds behind charts, including after a full resize redraw.
+    const panels = svg.insert('g', ':first-child').attr('class', 'chart-panels');
+    const { topPanelTop, controlPanelTop, controlPanelHeight,
+        legendPanelTop, legendPanelHeight, globalPanelTop } = layout;
+    [
+        { x: 16, y: topPanelTop, width: sideLeft - 44, height: height - 16 - topPanelTop },
+        { x: sideLeft, y: controlPanelTop, width: sideWidth, height: controlPanelHeight },
+        { x: sideLeft, y: legendPanelTop, width: sideWidth, height: legendPanelHeight },
+        { x: sideLeft, y: globalPanelTop, width: sideWidth, height: height - 16 - globalPanelTop },
+    ].forEach(panel => {
+        panels.append('rect').attr('x', panel.x).attr('y', panel.y)
+            .attr('width', panel.width).attr('height', panel.height)
+            .attr('rx', 12).attr('fill', '#fff').attr('stroke', '#dbe3ec');
+    });
+    // These lines stop at the left plot; none extend into the totals panel.
+    panels.append('line').attr('x1', margin.left).attr('x2', right)
+        .attr('y1', margin.top).attr('y2', margin.top)
+        .attr('class', 'chart-boundary');
+    const dividers = criteria.slice(1).map((criterion, i) =>
+        (x(criteria[i].id) + x.bandwidth() + x(criterion.id)) / 2);
+    panels.append('line').attr('class', 'scale-bottom-line')
+        .attr('x1', margin.left).attr('x2', right)
+        .attr('y1', bottom).attr('y2', bottom).attr('stroke', '#e2e8f0');
+    // Continue criterion dividers through the shared Scale/Bars boundary.
+    [[margin.top, bottom], [overviewTop, overviewBottom]].forEach(([top, end]) => {
+        panels.append('g').attr('stroke', '#e2e8f0').selectAll('line')
+            .data(dividers).join('line').attr('x1', d => d).attr('x2', d => d)
+            .attr('y1', top).attr('y2', end);
+    });
+}
 
 function styleBarAxes(layout) {
-    // Keep value and product labels while hiding Global axis strokes.
+    // Keep product labels while hiding Global axis strokes.
     svg.selectAll('.total-overview .axis line').remove();
     svg.selectAll('.overview .domain, .total-overview .domain').attr('stroke', 'none');
     svg.selectAll('.overview .axis, .total-overview .axis').attr('color', '#17212b');
     svg.selectAll('.overview .tick line, .total-overview .tick line')
         .attr('stroke', '#17212b').attr('stroke-width', 2);
     drawBarAxes(svg.select('.overview'), layout.margin.left, layout.right,
-        layout.margin.top - layout.overviewHeight, layout.margin.top);
+        layout.overviewTop, layout.overviewBottom);
 }
 
 function drawBarAxes(parent, left, right, top, bottom) {
@@ -549,90 +574,59 @@ function drawBarAxes(parent, left, right, top, bottom) {
         .attr('x2', end => end.x).attr('y2', end => end.y);
 }
 
-function drawOverview({ margin, overviewHeight }, x) {
-    const top = margin.top - overviewHeight;
-    const overviewY = d3.scaleLinear().domain([0, d3.max(overviewBars, bar => bar.total) || 1]).nice()
-        .range([margin.top, top]);
+function drawOverview(layout, x) {
+    const { margin, overviewTop, overviewBottom, overviewHeight } = layout;
     const overview = svg.append('g').attr('class', 'overview');
-    overview.append('g')
-        .attr('class', 'axis overview-axis')
+    const y = d3.scaleLinear().domain([0, d3.max(overviewBars, bar => bar.total) || 1]).nice().range([overviewBottom, overviewTop]);
+    overview.append('g').attr('class', 'axis overview-axis')
         .attr('transform', `translate(${margin.left},0)`)
-        .call(d3.axisLeft(overviewY).ticks(Math.max(2, Math.floor(overviewHeight / 40)))
+        .call(d3.axisLeft(y).tickValues([])
             .tickSize(0).tickPadding(9));
-
-    const productScales = new Map(criteria.map(criterion => [
-        criterion.id,
-        d3.scaleBand().domain(criterion.products.map(product => product.id))
-            .range([x(criterion.id), x(criterion.id) + x.bandwidth()]),
-    ]));
     overviewBars.forEach(bar => {
-        const productX = productScales.get(bar.criterionId);
-        const barWidth = productX.bandwidth() * 0.6;
-        const group = overview.append('g');
-        group.append('title').text(`${bar.product}: total rating ${bar.total}`);
-        group.selectAll('rect')
-            .data(bar.segments)
-            .join('rect')
-            .attr('x', productX(bar.productId) + (productX.bandwidth() - barWidth) / 2)
-            .attr('y', segment => overviewY(segment.end))
-            .attr('width', barWidth)
-            .attr('height', segment => overviewY(segment.start) - overviewY(segment.end))
-            .attr('fill', productColor(bar.productId))
-            .attr('fill-opacity', segment => segment.confidence === null ? 1 : confidenceOpacity(segment.confidence))
-            .attr('tabindex', 0)
-            .attr('role', 'img')
-            .attr('aria-label', segment => overviewSegmentText(bar, segment))
-            .call(bindOverviewSelection)
-            .append('title')
-            .text(segment => overviewSegmentText(bar, segment));
+        const criterion = criteria.find(item => item.id === bar.criterionId);
+        const productX = d3.scaleBand().domain(criterion.products.map(product => product.id))
+            .range([x(criterion.id), x(criterion.id) + x.bandwidth()]);
+        const width = productX.bandwidth() * 0.6;
+        drawV3Stack(overview, bar, productX(bar.productId) + (productX.bandwidth() - width) / 2,
+            width, y);
     });
 }
 
-function drawTotalOverview({ margin, totalOverviewHeight, right, legendWidth }) {
-    const overviewLeft = right + 10;
-    // Share the legend width, reserving space inside it for the Y-axis labels.
-    const left = overviewLeft + 22;
-    const chartRight = Math.max(left + 1, overviewLeft + legendWidth);
-    const top = margin.top - totalOverviewHeight;
-    // Totals across criteria need their own labeled scale.
-    const totalY = d3.scaleLinear().domain([0, d3.max(totalOverviewBars, bar => bar.total) || 1]).nice().range([margin.top, top]);
-    const productX = d3.scaleBand().domain(products.map(product => product.id))
-        .range([left, chartRight]).padding(0.25);
+function drawTotalOverview(layout) {
+    const { sideLeft, sideWidth, totalTop, totalBottom } = layout;
+    const left = sideLeft + 56;
+    const right = sideLeft + sideWidth - 20;
     const overview = svg.append('g').attr('class', 'total-overview');
-    overview.append('text')
-        .attr('x', overviewLeft).attr('y', top - 12)
-        .attr('fill', '#17212b').attr('font-size', 12).attr('font-weight', 600)
-        .text('Overall Rating')
-        .each(function () { fitLabel(this, legendWidth); })
-        .append('title').text('Sum of ratings across all criteria, by product');
-    // Reuse the vertical divider as the totals axis, with labels on its right.
-    overview.append('g')
-        .attr('class', 'axis total-overview-axis')
-        .attr('transform', `translate(${right},0)`)
-        .call(d3.axisRight(totalY).ticks(Math.max(2, Math.floor(totalOverviewHeight / 40)))
-            .tickSize(0).tickPadding(4))
-        .select('.domain').remove();
+    overview.append('text').attr('class', 'axis-title')
+        .attr('x', sideLeft + 20).attr('y', totalTop - 6)
+        .attr('fill', '#17212b').text('Overall Rating');
+    const y = d3.scaleLinear().domain([0, d3.max(totalOverviewBars, bar => bar.total) || 1]).nice().range([totalBottom, totalTop]);
+    const x = d3.scaleBand().domain(products.map(product => product.id))
+        .range([left, right]).padding(0.3);
+    overview.append('g').attr('class', 'axis total-overview-axis')
+        .attr('transform', `translate(${left},0)`)
+        .call(d3.axisLeft(y).tickValues([])
+            .tickSize(0).tickPadding(8));
     totalOverviewBars.forEach(bar => {
-        const group = overview.append('g');
-        group.selectAll('rect').data(bar.segments).join('rect')
-            .attr('x', productX(bar.productId))
-            .attr('y', segment => totalY(segment.end))
-            .attr('width', productX.bandwidth())
-            .attr('height', segment => totalY(segment.start) - totalY(segment.end))
-            .attr('fill', productColor(bar.productId))
-            .attr('fill-opacity', segment => segment.confidence === null ? 1 : confidenceOpacity(segment.confidence))
-            .attr('tabindex', 0).attr('role', 'img')
-            .attr('aria-label', segment => overviewSegmentText(bar, segment))
-            .call(bindOverviewSelection)
-            .append('title').text(segment => overviewSegmentText(bar, segment));
-        group.append('text')
-            .attr('x', productX(bar.productId) + productX.bandwidth() / 2)
-            .attr('y', margin.top + 13)
-            .attr('text-anchor', 'middle').attr('font-size', 12).attr('fill', '#17212b')
-            .text(bar.product)
-            .each(function () { fitLabel(this, productX.bandwidth()); })
-            .append('title').text(`${bar.product}: total rating ${bar.total}`);
+        drawV3Stack(overview, bar, x(bar.productId), x.bandwidth(), y);
     });
+    const productNames = new Map(products.map(product => [product.id, product.name]));
+    overview.append('g').attr('class', 'axis total-product-axis')
+        .attr('transform', `translate(0,${totalBottom})`)
+        .call(d3.axisBottom(x).tickSize(0).tickPadding(12).tickFormat(id => productNames.get(id)))
+        .selectAll('.tick text').each(function () { wrapLabel(this, x.bandwidth(), 2); });
+}
+
+function drawV3Stack(parent, bar, left, width, y) {
+    parent.append('g').selectAll('rect').data(bar.segments).join('rect')
+        .attr('x', left).attr('width', width)
+        .attr('y', segment => y(segment.end))
+        .attr('height', segment => y(segment.start) - y(segment.end))
+        .attr('fill', productColor(bar.productId))
+        .attr('fill-opacity', segment => segment.confidence === null ? 1 : confidenceOpacity(segment.confidence))
+        .attr('tabindex', 0).attr('aria-label', segment => overviewSegmentText(bar, segment))
+        .call(bindOverviewSelection)
+        .append('title').text(segment => overviewSegmentText(bar, segment));
 }
 
 startChart();

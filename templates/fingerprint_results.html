@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8">
@@ -8,14 +8,38 @@
         body { margin: 0; background: #fff; font-family: Arial, sans-serif; }
         #fingerprint-chart { width: 100%; height: 100vh; height: 100dvh; overflow: hidden; }
         #fingerprint-chart svg { display: block; max-width: 100%; }
-        .axis { color: #333; }
-        .axis text { font-size: 12px; }
+        {% if chart_script == 'js/fingerprint_results_v3.js' %}
+        body { background: #f1f5f9; }
+        #fingerprint-chart { min-width: 960px; min-height: 760px; }
+        {% endif %}
+        #fingerprint-chart { font-size: 12px; color: #17212b; }
+        #fingerprint-chart svg text { font-family: Arial, sans-serif; font-size: 12px; }
+        .axis { color: #17212b; }
+        .axis-title, .confidence-filter-title { font-weight: 600; }
+        .confidence-filter-title { margin-bottom: 4px; }
+        .rating-tooltip {
+            position: fixed; z-index: 1000; pointer-events: none;
+            box-sizing: border-box; width: 340px; max-width: calc(100vw - 24px);
+            max-height: calc(100vh - 24px); overflow-y: auto;
+            padding: 16px 18px; border: 1px solid #dbe3ec; border-radius: 12px;
+            background: #fff; color: #17212b;
+            box-shadow: 0 8px 28px rgba(15, 23, 42, 0.16);
+            font-size: 13px; line-height: 1.55; overflow-wrap: anywhere;
+        }
+        .rating-tooltip-user { font-size: 14px; font-weight: 600; }
+        .rating-tooltip-meta { margin-top: 4px; color: #475569; }
+        .rating-tooltip-label {
+            margin-top: 12px; padding-top: 10px; border-top: 1px solid #e2e8f0;
+            color: #64748b; font-size: 12px; font-weight: 600;
+        }
+        .rating-tooltip-comment { margin-top: 4px; white-space: pre-wrap; }
     </style>
 </head>
 <body>
     <div id="fingerprint-chart"></div>
     <script id="fingerprint-data" type="application/json">{{ chart_data | tojson }}</script>
     <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+    <script src="{{ url_for('static', filename='js/fingerprint_rating_tooltip.js') }}"></script>
     <script src="{{ url_for('static', filename=chart_script) }}"></script>
 </body>
 </html>

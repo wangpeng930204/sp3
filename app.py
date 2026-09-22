@@ -632,6 +632,8 @@ def fingerprint_select_product():
 @app.route("/fingerprint/results")
 @app.route("/fingerprint/results/v1", endpoint="fingerprint_results_v1", defaults={"version": "v1"})
 @app.route("/fingerprint/results/v2", endpoint="fingerprint_results_v2", defaults={"version": "v2"})
+@app.route("/fingerprint/results/v3", endpoint="fingerprint_results_v3", defaults={"version": "v3"})
+@app.route("/fingerprint/results/v4", endpoint="fingerprint_results_v4", defaults={"version": "v4"})
 def fingerprint_results(version="v2"):
     respondent_id = session.get("fingerprint_respondent_id")
     workshop_id = session.get("fingerprint_workshop_id")
@@ -2214,6 +2216,15 @@ def save_strategy_scale(strategy_id):
                             stage_id=strategy["lifecycle_stage_id"], question_id=strategy_id, saved=1))
 
 
+# if __name__ == "__main__":
+#     port = int(os.environ.get("PORT", "5000"))
+#     app.run(debug=True, use_reloader=False, port=port)
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "5000"))
-    app.run(debug=True, use_reloader=False, port=port)
+    app.run(
+        host="0.0.0.0",
+        port=port,
+        debug=True,
+        use_reloader=False
+    )

@@ -65,12 +65,12 @@
                     <a class="progress-link current" href="{{ url_for('user_step', workshop_id=workshop.id if workshop else None, step=1, view='overview') }}">Step 1</a>
                 {% endfor %}
             </div>
-            <div class="nav-layer" aria-label="{% if current_step == 4 %}Challenges{% elif current_step == 5 %}Strategies{% else %}Lifecycle stages{% endif %}">
+            <div class="nav-layer" aria-label="{% if current_step in [4, 5] %}Strategies{% else %}Lifecycle stages{% endif %}">
                 {% if current_step in [4, 5] %}
                     {% for question in questions %}
                         <a class="progress-link stage-link{% if question.id in answered_question_ids %} finished{% endif %}{% if current_question and question.id == current_question.id %} current{% endif %}"
                            href="{{ question_url(question) }}">
-                            {{ 'Challenge' if current_step == 4 else 'Strategy' }} {{ loop.index }}
+                            Strategy {{ loop.index }}
                         </a>
                     {% endfor %}
                 {% else %}
