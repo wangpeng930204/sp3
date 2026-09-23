@@ -1,41 +1,49 @@
 import os
 import secrets
-import sqlite3
+import psycopg
+from psycopg.rows import dict_row
+from dotenv import load_dotenv
 from pathlib import Path
 
 from flask import Flask, redirect, render_template, request, send_from_directory, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
+load_dotenv(Path(__file__).with_name(".env"))
+
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "digital-spd-dev-secret")
 
-DATABASE = Path(__file__).with_name("notes.db")
 STEP_DESCRIPTION_MAX_LENGTH = 180
 
 
 def get_db():
-    conn = sqlite3.connect(DATABASE)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA busy_timeout = 5000")
-    return conn
+    return psycopg.connect(
+        host=os.environ.get("PGHOST", "194.47.155.215"),
+        port=int(os.environ.get("PGPORT", "5432")),
+        user=os.environ.get("PGUSER", "sp3user"),
+        password=os.environ["PGPASSWORD"],
+        dbname=os.environ.get("PGDATABASE", "sp3"),
+        connect_timeout=10,
+        row_factory=dict_row,
+    )
 
 
 def get_shared_workshop_user(conn, workshop_id):
     """Return the common data owner used by every guest in a workshop."""
     email = f"shared-workshop-{workshop_id}@workshop.local"
-    existing_user = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
+    existing_user = conn.execute("SELECT id FROM users WHERE email = %s", (email,)).fetchone()
     if existing_user is not None:
         return existing_user["id"]
     username = f"workshop-shared-{workshop_id}-{secrets.token_hex(4)}"
     conn.execute(
         """
-        INSERT OR IGNORE INTO users (username, email, password_hash, role)
-        VALUES (?, ?, ?, 'user')
-        """,
+        INSERT INTO users (username, email, password_hash, role)
+        VALUES (%s, %s, %s, 'user')
+            ON CONFLICT DO NOTHING
+            """,
         (username, email, generate_password_hash(secrets.token_urlsafe(24))),
     )
-    return conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()["id"]
+    return conn.execute("SELECT id FROM users WHERE email = %s", (email,)).fetchone()["id"]
 
 
 def merge_guest_workshop_data(conn, workshop_id, shared_user_id):
@@ -46,8 +54,8 @@ def merge_guest_workshop_data(conn, workshop_id, shared_user_id):
         SELECT r.question_id, r.response_text, r.updated_at
         FROM workshop_responses AS r
         JOIN workshop_questions AS q ON q.id = r.question_id
-        WHERE q.workshop_id = ? AND r.user_id <> ?
-        ORDER BY datetime(r.updated_at), r.rowid
+        WHERE q.workshop_id = %s AND r.user_id <> %s
+        ORDER BY r.updated_at, r.user_id, r.question_id
         """,
         (workshop_id, shared_user_id),
     ).fetchall()
@@ -55,19 +63,19 @@ def merge_guest_workshop_data(conn, workshop_id, shared_user_id):
         conn.execute(
             """
             INSERT INTO workshop_responses (user_id, question_id, response_text, updated_at)
-            VALUES (?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s)
             ON CONFLICT(user_id, question_id) DO UPDATE SET
                 response_text = excluded.response_text,
                 updated_at = excluded.updated_at
-            WHERE datetime(excluded.updated_at) >= datetime(workshop_responses.updated_at)
+            WHERE excluded.updated_at >= workshop_responses.updated_at
             """,
             (shared_user_id, row["question_id"], row["response_text"], row["updated_at"]),
         )
     conn.execute(
         """
         DELETE FROM workshop_responses
-        WHERE user_id <> ?
-          AND question_id IN (SELECT id FROM workshop_questions WHERE workshop_id = ?)
+        WHERE user_id <> %s
+          AND question_id IN (SELECT id FROM workshop_questions WHERE workshop_id = %s)
         """,
         (shared_user_id, workshop_id),
     )
@@ -76,14 +84,14 @@ def merge_guest_workshop_data(conn, workshop_id, shared_user_id):
     conn.execute(
         """
         UPDATE workshop_classified_responses
-        SET user_id = ?
-        WHERE question_id IN (SELECT id FROM workshop_questions WHERE workshop_id = ?)
+        SET user_id = %s
+        WHERE question_id IN (SELECT id FROM workshop_questions WHERE workshop_id = %s)
         """,
         (shared_user_id, workshop_id),
     )
 
     # Steps 3-5 share strategy IDs, so move their dependent rows before the strategies.
-    strategy_ids = "SELECT id FROM workshop_comparison_responses WHERE workshop_id = ?"
+    strategy_ids = "SELECT id FROM workshop_comparison_responses WHERE workshop_id = %s"
     for table in (
         "workshop_strategy_details",
         "workshop_strategy_entries",
@@ -92,11 +100,11 @@ def merge_guest_workshop_data(conn, workshop_id, shared_user_id):
         "workshop_strategy_scale_definitions",
     ):
         conn.execute(
-            f"UPDATE {table} SET user_id = ? WHERE strategy_response_id IN ({strategy_ids})",
+            f"UPDATE {table} SET user_id = %s WHERE strategy_response_id IN ({strategy_ids})",
             (shared_user_id, workshop_id),
         )
     conn.execute(
-        "UPDATE workshop_comparison_responses SET user_id = ? WHERE workshop_id = ?",
+        "UPDATE workshop_comparison_responses SET user_id = %s WHERE workshop_id = %s",
         (shared_user_id, workshop_id),
     )
 
@@ -104,11 +112,11 @@ def merge_guest_workshop_data(conn, workshop_id, shared_user_id):
 def generate_unique_access_code(conn):
     for _ in range(100):
         code = f"{secrets.randbelow(9000) + 1000:04d}"
-        if not conn.execute("SELECT 1 FROM used_access_codes WHERE code = ?", (code,)).fetchone():
+        if not conn.execute("SELECT 1 FROM used_access_codes WHERE code = %s", (code,)).fetchone():
             return code
     for number in range(1000, 10000):
         code = str(number)
-        if not conn.execute("SELECT 1 FROM used_access_codes WHERE code = ?", (code,)).fetchone():
+        if not conn.execute("SELECT 1 FROM used_access_codes WHERE code = %s", (code,)).fetchone():
             return code
     raise RuntimeError("All four-digit workshop pairing codes have been used.")
 
@@ -118,45 +126,46 @@ def init_db():
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
                 username TEXT NOT NULL UNIQUE,
                 email TEXT NOT NULL UNIQUE,
                 password_hash TEXT NOT NULL,
                 role TEXT NOT NULL DEFAULT 'user',
                 is_verified INTEGER NOT NULL DEFAULT 1,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
         conn.execute(
             """
-            INSERT OR IGNORE INTO users (username, email, password_hash, role)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO users (username, email, password_hash, role)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT DO NOTHING
             """,
             ("Admin", "admin@example.local", generate_password_hash("admin"), "admin"),
         )
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS workshops (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
                 title TEXT NOT NULL,
                 is_active INTEGER NOT NULL DEFAULT 0,
                 access_code TEXT,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
         workshop_columns = {
-            row["name"] for row in conn.execute("PRAGMA table_info(workshops)").fetchall()
+            row["name"] for row in conn.execute("SELECT column_name AS name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'workshops'").fetchall()
         }
         if "is_active" not in workshop_columns:
             conn.execute("ALTER TABLE workshops ADD COLUMN is_active INTEGER NOT NULL DEFAULT 0")
             latest_workshop = conn.execute(
-                "SELECT id FROM workshops ORDER BY datetime(created_at) DESC, id DESC LIMIT 1"
+                "SELECT id FROM workshops ORDER BY created_at DESC, id DESC LIMIT 1"
             ).fetchone()
             if latest_workshop:
-                conn.execute("UPDATE workshops SET is_active = 1 WHERE id = ?", (latest_workshop["id"],))
+                conn.execute("UPDATE workshops SET is_active = 1 WHERE id = %s", (latest_workshop["id"],))
         if "access_code" not in workshop_columns:
             conn.execute("ALTER TABLE workshops ADD COLUMN access_code TEXT")
         conn.execute(
@@ -164,14 +173,15 @@ def init_db():
             CREATE TABLE IF NOT EXISTS used_access_codes (
                 code TEXT PRIMARY KEY,
                 workshop_id INTEGER,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
         conn.execute(
             """
-            INSERT OR IGNORE INTO used_access_codes (code, workshop_id)
+            INSERT INTO used_access_codes (code, workshop_id)
             SELECT access_code, id FROM workshops WHERE access_code IS NOT NULL
+            ON CONFLICT DO NOTHING
             """
         )
         active_without_code = conn.execute(
@@ -180,34 +190,34 @@ def init_db():
         if active_without_code:
             access_code = generate_unique_access_code(conn)
             conn.execute(
-                "UPDATE workshops SET access_code = ? WHERE id = ?",
+                "UPDATE workshops SET access_code = %s WHERE id = %s",
                 (access_code, active_without_code["id"]),
             )
             conn.execute(
-                "INSERT INTO used_access_codes (code, workshop_id) VALUES (?, ?)",
+                "INSERT INTO used_access_codes (code, workshop_id) VALUES (%s, %s)",
                 (access_code, active_without_code["id"]),
             )
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS lifecycle_stages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
                 name TEXT NOT NULL UNIQUE,
                 sort_order INTEGER NOT NULL DEFAULT 0,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS workshop_questions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
                 workshop_id INTEGER NOT NULL,
                 step_number INTEGER NOT NULL,
                 lifecycle_stage_id INTEGER NOT NULL,
                 question_text TEXT NOT NULL,
                 guidance TEXT,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (workshop_id) REFERENCES workshops (id) ON DELETE CASCADE,
                 FOREIGN KEY (lifecycle_stage_id) REFERENCES lifecycle_stages (id) ON DELETE CASCADE
             )
@@ -219,7 +229,7 @@ def init_db():
                 workshop_id INTEGER NOT NULL,
                 step_number INTEGER NOT NULL,
                 description TEXT NOT NULL DEFAULT '',
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (workshop_id, step_number),
                 FOREIGN KEY (workshop_id) REFERENCES workshops (id) ON DELETE CASCADE
             )
@@ -228,9 +238,10 @@ def init_db():
         for step_number in range(1, 6):
             conn.execute(
                 """
-                INSERT OR IGNORE INTO workshop_step_descriptions (workshop_id, step_number, description)
-                SELECT id, ?, '' FROM workshops
-                """,
+                INSERT INTO workshop_step_descriptions (workshop_id, step_number, description)
+                SELECT id, %s, '' FROM workshops
+            ON CONFLICT DO NOTHING
+            """,
                 (step_number,),
             )
         conn.execute(
@@ -239,7 +250,7 @@ def init_db():
                 user_id INTEGER NOT NULL,
                 question_id INTEGER NOT NULL,
                 response_text TEXT NOT NULL DEFAULT '',
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (user_id, question_id),
                 FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
                 FOREIGN KEY (question_id) REFERENCES workshop_questions (id) ON DELETE CASCADE
@@ -249,14 +260,14 @@ def init_db():
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS workshop_classified_responses (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
                 user_id INTEGER NOT NULL,
                 question_id INTEGER NOT NULL,
                 response_text TEXT NOT NULL,
                 polarity TEXT NOT NULL CHECK (polarity IN ('advantage', 'disadvantage')),
                 category TEXT NOT NULL CHECK (category IN ('social', 'ecological', 'economic')),
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
                 FOREIGN KEY (question_id) REFERENCES workshop_questions (id) ON DELETE CASCADE
             )
@@ -265,13 +276,13 @@ def init_db():
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS workshop_solution_responses (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
                 user_id INTEGER NOT NULL,
                 question_id INTEGER NOT NULL,
                 response_text TEXT NOT NULL,
                 category TEXT NOT NULL CHECK (category IN ('social', 'ecological', 'economic')),
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
                 FOREIGN KEY (question_id) REFERENCES workshop_questions (id) ON DELETE CASCADE
             )
@@ -280,14 +291,14 @@ def init_db():
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS workshop_comparison_responses (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
                 user_id INTEGER NOT NULL,
                 workshop_id INTEGER NOT NULL,
                 lifecycle_stage_id INTEGER NOT NULL,
                 response_text TEXT NOT NULL,
                 category TEXT NOT NULL CHECK (category IN ('social', 'ecological', 'economic')),
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
                 FOREIGN KEY (workshop_id) REFERENCES workshops (id) ON DELETE CASCADE,
                 FOREIGN KEY (lifecycle_stage_id) REFERENCES lifecycle_stages (id) ON DELETE CASCADE
@@ -304,7 +315,7 @@ def init_db():
                 comments TEXT NOT NULL DEFAULT '',
                 lifecycle_stage_id INTEGER NOT NULL,
                 category TEXT NOT NULL CHECK (category IN ('social', 'ecological', 'economic')),
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (user_id, strategy_response_id),
                 FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
                 FOREIGN KEY (strategy_response_id) REFERENCES workshop_comparison_responses (id) ON DELETE CASCADE,
@@ -315,7 +326,7 @@ def init_db():
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS workshop_strategy_entries (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
                 user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                 strategy_response_id INTEGER NOT NULL REFERENCES workshop_comparison_responses(id) ON DELETE CASCADE,
                 lsc TEXT NOT NULL DEFAULT '',
@@ -341,7 +352,7 @@ def init_db():
             CREATE TABLE IF NOT EXISTS workshop_selected_strategies (
                 user_id INTEGER NOT NULL,
                 strategy_response_id INTEGER NOT NULL,
-                selected_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                selected_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (user_id, strategy_response_id),
                 FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
                 FOREIGN KEY (strategy_response_id) REFERENCES workshop_comparison_responses (id) ON DELETE CASCADE
@@ -354,7 +365,7 @@ def init_db():
                 user_id INTEGER NOT NULL,
                 strategy_response_id INTEGER NOT NULL,
                 scale_value INTEGER NOT NULL CHECK (scale_value BETWEEN 0 AND 9),
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (user_id, strategy_response_id),
                 FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
                 FOREIGN KEY (strategy_response_id) REFERENCES workshop_comparison_responses (id) ON DELETE CASCADE
@@ -368,7 +379,7 @@ def init_db():
                 strategy_response_id INTEGER NOT NULL,
                 scale_value INTEGER NOT NULL CHECK (scale_value BETWEEN 0 AND 9),
                 definition TEXT NOT NULL DEFAULT '',
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (user_id, strategy_response_id, scale_value),
                 FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
                 FOREIGN KEY (strategy_response_id) REFERENCES workshop_comparison_responses (id) ON DELETE CASCADE
@@ -378,12 +389,12 @@ def init_db():
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS fingerprint_respondents (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
                 workshop_id INTEGER NOT NULL,
                 display_name TEXT NOT NULL,
                 name_key TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE (workshop_id, name_key),
                 FOREIGN KEY (workshop_id) REFERENCES workshops (id) ON DELETE CASCADE
             )
@@ -397,7 +408,7 @@ def init_db():
                 scale_value INTEGER NOT NULL CHECK (scale_value BETWEEN 0 AND 9),
                 confidence INTEGER NOT NULL DEFAULT 50 CHECK (confidence BETWEEN 0 AND 100),
                 comments TEXT NOT NULL DEFAULT '',
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (respondent_id, strategy_response_id),
                 FOREIGN KEY (respondent_id) REFERENCES fingerprint_respondents (id) ON DELETE CASCADE,
                 FOREIGN KEY (strategy_response_id) REFERENCES workshop_comparison_responses (id) ON DELETE CASCADE
@@ -405,7 +416,7 @@ def init_db():
             """
         )
         fingerprint_rating_columns = {
-            row["name"] for row in conn.execute("PRAGMA table_info(fingerprint_ratings)").fetchall()
+            row["name"] for row in conn.execute("SELECT column_name AS name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'fingerprint_ratings'").fetchall()
         }
         if "confidence" not in fingerprint_rating_columns:
             conn.execute("ALTER TABLE fingerprint_ratings ADD COLUMN confidence INTEGER NOT NULL DEFAULT 50")
@@ -414,10 +425,10 @@ def init_db():
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS workshop_products (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
                 workshop_id INTEGER NOT NULL,
                 name TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE (workshop_id, name),
                 FOREIGN KEY (workshop_id) REFERENCES workshops (id) ON DELETE CASCADE
             )
@@ -432,7 +443,7 @@ def init_db():
                 scale_value INTEGER NOT NULL CHECK (scale_value BETWEEN 0 AND 9),
                 confidence INTEGER NOT NULL DEFAULT 50 CHECK (confidence BETWEEN 0 AND 100),
                 comments TEXT NOT NULL DEFAULT '',
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (respondent_id, product_id, strategy_response_id),
                 FOREIGN KEY (respondent_id) REFERENCES fingerprint_respondents (id) ON DELETE CASCADE,
                 FOREIGN KEY (product_id) REFERENCES workshop_products (id) ON DELETE CASCADE,
@@ -442,18 +453,20 @@ def init_db():
         )
         conn.execute(
             """
-            INSERT OR IGNORE INTO workshop_step_descriptions (workshop_id, step_number, description)
+            INSERT INTO workshop_step_descriptions (workshop_id, step_number, description)
             SELECT workshop_id, 4, 'Develop each Step 3 strategy with LSC, measurement, comments, and classifications.'
             FROM workshop_step_descriptions
             WHERE step_number = 3
+            ON CONFLICT DO NOTHING
             """
         )
         conn.execute(
             """
-            INSERT OR IGNORE INTO workshop_step_descriptions (workshop_id, step_number, description)
+            INSERT INTO workshop_step_descriptions (workshop_id, step_number, description)
             SELECT workshop_id, 5, 'Define a 0–9 scale for each selected LSC strategy.'
             FROM workshop_step_descriptions
             WHERE step_number = 4
+            ON CONFLICT DO NOTHING
             """
         )
         default_stages = [
@@ -467,9 +480,10 @@ def init_db():
         for index, stage_name in enumerate(default_stages, start=1):
             conn.execute(
                 """
-                INSERT OR IGNORE INTO lifecycle_stages (name, sort_order)
-                VALUES (?, ?)
-                """,
+                INSERT INTO lifecycle_stages (name, sort_order)
+                VALUES (%s, %s)
+            ON CONFLICT DO NOTHING
+            """,
                 (stage_name, index),
             )
 
@@ -493,7 +507,7 @@ def join_workshop():
 
     with get_db() as conn:
         workshop = conn.execute(
-            "SELECT id FROM workshops WHERE is_active = 1 AND access_code = ?",
+            "SELECT id FROM workshops WHERE is_active = 1 AND access_code = %s",
             (access_code,),
         ).fetchone()
         if workshop is None:
@@ -524,7 +538,7 @@ def fingerprint_start():
 
         with get_db() as conn:
             workshop = conn.execute(
-                "SELECT id FROM workshops WHERE is_active = 1 AND access_code = ?",
+                "SELECT id FROM workshops WHERE is_active = 1 AND access_code = %s",
                 (access_code,),
             ).fetchone()
             if workshop is None:
@@ -533,7 +547,7 @@ def fingerprint_start():
             conn.execute(
                 """
                 INSERT INTO fingerprint_respondents (workshop_id, display_name, name_key)
-                VALUES (?, ?, ?)
+                VALUES (%s, %s, %s)
                 ON CONFLICT(workshop_id, name_key) DO UPDATE SET
                     display_name = excluded.display_name,
                     updated_at = CURRENT_TIMESTAMP
@@ -541,7 +555,7 @@ def fingerprint_start():
                 (workshop["id"], participant_name, name_key),
             )
             respondent = conn.execute(
-                "SELECT id FROM fingerprint_respondents WHERE workshop_id = ? AND name_key = ?",
+                "SELECT id FROM fingerprint_respondents WHERE workshop_id = %s AND name_key = %s",
                 (workshop["id"], name_key),
             ).fetchone()
 
@@ -562,16 +576,16 @@ def fingerprint_select_product():
     if respondent_id is None or workshop_id is None:
         return redirect(url_for("fingerprint_start"))
     with get_db() as conn:
-        workshop = conn.execute("SELECT id, title FROM workshops WHERE id = ?", (workshop_id,)).fetchone()
+        workshop = conn.execute("SELECT id, title FROM workshops WHERE id = %s", (workshop_id,)).fetchone()
         products = conn.execute(
-            "SELECT id, name FROM workshop_products WHERE workshop_id = ? ORDER BY name COLLATE NOCASE, id",
+            "SELECT id, name FROM workshop_products WHERE workshop_id = %s ORDER BY LOWER(name), id",
             (workshop_id,),
         ).fetchall()
         total_strategies = conn.execute(
             """
-            SELECT COUNT(*)
+            SELECT COUNT(*) AS value
             FROM workshop_comparison_responses AS r
-            WHERE r.workshop_id = ?
+            WHERE r.workshop_id = %s
               AND EXISTS (
                   SELECT 1
                   FROM workshop_strategy_scale_definitions AS d
@@ -579,7 +593,7 @@ def fingerprint_select_product():
               )
             """,
             (workshop_id,),
-        ).fetchone()[0]
+        ).fetchone()["value"]
         rated_counts = {
             row["product_id"]: row["rated_count"]
             for row in conn.execute(
@@ -589,9 +603,9 @@ def fingerprint_select_product():
                 JOIN workshop_products AS product ON product.id = ratings.product_id
                 JOIN workshop_comparison_responses AS strategy
                   ON strategy.id = ratings.strategy_response_id
-                WHERE ratings.respondent_id = ?
-                  AND product.workshop_id = ?
-                  AND strategy.workshop_id = ?
+                WHERE ratings.respondent_id = %s
+                  AND product.workshop_id = %s
+                  AND strategy.workshop_id = %s
                   AND EXISTS (
                       SELECT 1
                       FROM workshop_strategy_scale_definitions AS d
@@ -613,7 +627,7 @@ def fingerprint_select_product():
         if request.method == "POST":
             product_id = request.form.get("product_id", type=int)
             product = conn.execute(
-                "SELECT id FROM workshop_products WHERE id = ? AND workshop_id = ?",
+                "SELECT id FROM workshop_products WHERE id = %s AND workshop_id = %s",
                 (product_id, workshop_id),
             ).fetchone()
             if product is not None:
@@ -646,7 +660,7 @@ def fingerprint_results(version="v2"):
             SELECT r.id, r.display_name, w.title
             FROM fingerprint_respondents AS r
             JOIN workshops AS w ON w.id = r.workshop_id
-            WHERE r.id = ? AND r.workshop_id = ?
+            WHERE r.id = %s AND r.workshop_id = %s
             """,
             (respondent_id, workshop_id),
         ).fetchone()
@@ -672,10 +686,10 @@ def fingerprint_results(version="v2"):
               ON details.strategy_response_id = strategy.id
             LEFT JOIN lifecycle_stages AS stage
               ON stage.id = COALESCE(details.lifecycle_stage_id, strategy.lifecycle_stage_id)
-            WHERE evaluator.workshop_id = ?
-              AND product.workshop_id = ?
-              AND strategy.workshop_id = ?
-            ORDER BY product.name COLLATE NOCASE, product.id,
+            WHERE evaluator.workshop_id = %s
+              AND product.workshop_id = %s
+              AND strategy.workshop_id = %s
+            ORDER BY LOWER(product.name), product.id,
                      stage.sort_order, stage.id, strategy.id
             """,
             (workshop_id, workshop_id, workshop_id),
@@ -723,7 +737,7 @@ def fingerprint_evaluate():
             SELECT r.id, r.display_name, w.id AS workshop_id, w.title
             FROM fingerprint_respondents AS r
             JOIN workshops AS w ON w.id = r.workshop_id
-            WHERE r.id = ? AND r.workshop_id = ?
+            WHERE r.id = %s AND r.workshop_id = %s
             """,
             (respondent_id, workshop_id),
         ).fetchone()
@@ -732,7 +746,7 @@ def fingerprint_evaluate():
             session.pop("fingerprint_workshop_id", None)
             return redirect(url_for("fingerprint_start"))
         product = conn.execute(
-            "SELECT id, name FROM workshop_products WHERE id = ? AND workshop_id = ?",
+            "SELECT id, name FROM workshop_products WHERE id = %s AND workshop_id = %s",
             (product_id, workshop_id),
         ).fetchone()
         if product is None:
@@ -747,7 +761,7 @@ def fingerprint_evaluate():
             FROM workshop_comparison_responses AS r
             LEFT JOIN workshop_strategy_details AS d ON d.strategy_response_id = r.id
             JOIN lifecycle_stages AS s ON s.id = COALESCE(d.lifecycle_stage_id, r.lifecycle_stage_id)
-            WHERE r.workshop_id = ?
+            WHERE r.workshop_id = %s
               AND EXISTS (
                   SELECT 1
                   FROM workshop_strategy_scale_definitions AS scale_definition
@@ -770,7 +784,7 @@ def fingerprint_evaluate():
                     """
                     INSERT INTO fingerprint_product_ratings
                         (respondent_id, product_id, strategy_response_id, scale_value, confidence, comments)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s, %s, %s)
                     ON CONFLICT(respondent_id, product_id, strategy_response_id) DO UPDATE SET
                         scale_value = excluded.scale_value,
                         confidence = excluded.confidence,
@@ -793,7 +807,7 @@ def fingerprint_evaluate():
             SELECT d.strategy_response_id, d.scale_value, d.definition
             FROM workshop_strategy_scale_definitions AS d
             JOIN workshop_comparison_responses AS r ON r.id = d.strategy_response_id
-            WHERE r.workshop_id = ?
+            WHERE r.workshop_id = %s
             """,
             (workshop_id,),
         ).fetchall()
@@ -805,7 +819,7 @@ def fingerprint_evaluate():
             for row in conn.execute(
                 """
                 SELECT strategy_response_id, scale_value, confidence, comments
-                FROM fingerprint_product_ratings WHERE respondent_id = ? AND product_id = ?
+                FROM fingerprint_product_ratings WHERE respondent_id = %s AND product_id = %s
                 """,
                 (respondent_id, product_id),
             ).fetchall()
@@ -867,7 +881,7 @@ def login():
                 """
                 SELECT id, username, email, password_hash, role
                 FROM users
-                WHERE lower(email) = lower(?) OR lower(username) = lower(?)
+                WHERE lower(email) = lower(%s) OR lower(username) = lower(%s)
                 """,
                 (identifier, identifier),
             ).fetchone()
@@ -923,11 +937,11 @@ def register():
                 conn.execute(
                     """
                     INSERT INTO users (username, email, password_hash, role)
-                    VALUES (?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s)
                     """,
                     (username, email, generate_password_hash(password), "user"),
                 )
-        except sqlite3.IntegrityError:
+        except psycopg.IntegrityError:
             return render_template("register.html", error="This account already exists.", form_data=form_data)
 
         return redirect(url_for("login"))
@@ -948,7 +962,7 @@ def user_management():
 
     with get_db() as conn:
         user = conn.execute(
-            "SELECT id, username, email, role FROM users WHERE id = ?",
+            "SELECT id, username, email, role FROM users WHERE id = %s",
             (user_id,),
         ).fetchone()
 
@@ -971,21 +985,21 @@ def user_management():
             with get_db() as conn:
                 if password:
                     conn.execute(
-                        "UPDATE users SET username = ?, password_hash = ? WHERE id = ?",
+                        "UPDATE users SET username = %s, password_hash = %s WHERE id = %s",
                         (username, generate_password_hash(password), user_id),
                     )
                 else:
                     conn.execute(
-                        "UPDATE users SET username = ? WHERE id = ?",
+                        "UPDATE users SET username = %s WHERE id = %s",
                         (username, user_id),
                     )
-        except sqlite3.IntegrityError:
+        except psycopg.IntegrityError:
             return render_template("user_management.html", user=user, error="This name is already in use.")
 
         session["username"] = username
         with get_db() as conn:
             user = conn.execute(
-                "SELECT id, username, email, role FROM users WHERE id = ?",
+                "SELECT id, username, email, role FROM users WHERE id = %s",
                 (user_id,),
             ).fetchone()
 
@@ -1004,7 +1018,7 @@ def expert_dashboard():
             """
             SELECT id, title, is_active, access_code, created_at
             FROM workshops
-            ORDER BY datetime(created_at) DESC, id DESC
+            ORDER BY created_at DESC, id DESC
             LIMIT 10
             """
         ).fetchall()
@@ -1012,13 +1026,13 @@ def expert_dashboard():
         selected_workshop = None
         if selected_id is not None:
             selected_workshop = conn.execute(
-                "SELECT id, title, access_code, is_active, created_at, updated_at FROM workshops WHERE id = ?",
+                "SELECT id, title, access_code, is_active, created_at, updated_at FROM workshops WHERE id = %s",
                 (selected_id,),
             ).fetchone()
 
         if selected_workshop is None and workshops:
             selected_workshop = conn.execute(
-                "SELECT id, title, access_code, is_active, created_at, updated_at FROM workshops WHERE id = ?",
+                "SELECT id, title, access_code, is_active, created_at, updated_at FROM workshops WHERE id = %s",
                 (workshops[0]["id"],),
             ).fetchone()
 
@@ -1037,14 +1051,14 @@ def expert_dashboard():
         products = []
         if selected_workshop is not None:
             products = conn.execute(
-                "SELECT id, name FROM workshop_products WHERE workshop_id = ? ORDER BY name COLLATE NOCASE, id",
+                "SELECT id, name FROM workshop_products WHERE workshop_id = %s ORDER BY LOWER(name), id",
                 (selected_workshop["id"],),
             ).fetchall()
             description_rows = conn.execute(
                 """
                 SELECT step_number, description
                 FROM workshop_step_descriptions
-                WHERE workshop_id = ?
+                WHERE workshop_id = %s
                 ORDER BY step_number
                 """,
                 (selected_workshop["id"],),
@@ -1055,8 +1069,8 @@ def expert_dashboard():
                 """
                 SELECT id, step_number, lifecycle_stage_id, question_text, guidance
                 FROM workshop_questions
-                WHERE workshop_id = ? AND step_number NOT IN (3, 4, 5)
-                ORDER BY step_number, datetime(created_at), id
+                WHERE workshop_id = %s AND step_number NOT IN (3, 4, 5)
+                ORDER BY step_number, created_at, id
                 """,
                 (selected_workshop["id"],),
             ).fetchall()
@@ -1074,8 +1088,8 @@ def expert_dashboard():
                 """
                 SELECT id, lifecycle_stage_id, question_text, guidance
                 FROM workshop_questions
-                WHERE workshop_id = ? AND step_number = ?
-                ORDER BY datetime(created_at), id
+                WHERE workshop_id = %s AND step_number = %s
+                ORDER BY created_at, id
                 """,
                 (selected_workshop["id"], step_number),
             ).fetchall()
@@ -1099,14 +1113,14 @@ def expert_dashboard():
 @app.post("/expert/workshops/new")
 def new_workshop():
     with get_db() as conn:
-        count = conn.execute("SELECT COUNT(*) FROM workshops").fetchone()[0] + 1
+        count = conn.execute("SELECT COUNT(*) AS value FROM workshops").fetchone()["value"] + 1
         cursor = conn.execute(
-            "INSERT INTO workshops (title) VALUES (?)",
+            "INSERT INTO workshops (title) VALUES (%s) RETURNING id",
             (f"New Workshop {count}",),
         )
-        workshop_id = cursor.lastrowid
-        conn.executemany(
-            "INSERT INTO workshop_step_descriptions (workshop_id, step_number, description) VALUES (?, ?, '')",
+        workshop_id = cursor.fetchone()["id"]
+        conn.cursor().executemany(
+            "INSERT INTO workshop_step_descriptions (workshop_id, step_number, description) VALUES (%s, %s, '')",
             [(workshop_id, step_number) for step_number in range(1, 6)],
         )
     return redirect(url_for("expert_dashboard", workshop_id=workshop_id, tab="settings"))
@@ -1119,10 +1133,10 @@ def add_workshop_product(workshop_id):
         try:
             with get_db() as conn:
                 conn.execute(
-                    "INSERT INTO workshop_products (workshop_id, name) VALUES (?, ?)",
+                    "INSERT INTO workshop_products (workshop_id, name) VALUES (%s, %s)",
                     (workshop_id, product_name),
                 )
-        except sqlite3.IntegrityError:
+        except psycopg.IntegrityError:
             pass
     return redirect(url_for("expert_dashboard", workshop_id=workshop_id, tab="settings"))
 
@@ -1130,7 +1144,7 @@ def add_workshop_product(workshop_id):
 @app.post("/expert/workshops/<int:workshop_id>/products/<int:product_id>/delete")
 def delete_workshop_product(workshop_id, product_id):
     with get_db() as conn:
-        conn.execute("DELETE FROM workshop_products WHERE id = ? AND workshop_id = ?", (product_id, workshop_id))
+        conn.execute("DELETE FROM workshop_products WHERE id = %s AND workshop_id = %s", (product_id, workshop_id))
     return redirect(url_for("expert_dashboard", workshop_id=workshop_id, tab="settings"))
 
 
@@ -1139,11 +1153,11 @@ def add_workshop_step(workshop_id):
     description = request.form.get("description", "").strip()
     with get_db() as conn:
         step_number = conn.execute(
-            "SELECT COALESCE(MAX(step_number), 0) + 1 FROM workshop_step_descriptions WHERE workshop_id = ?",
+            "SELECT COALESCE(MAX(step_number), 0) + 1 AS value FROM workshop_step_descriptions WHERE workshop_id = %s",
             (workshop_id,),
-        ).fetchone()[0]
+        ).fetchone()["value"]
         conn.execute(
-            "INSERT INTO workshop_step_descriptions (workshop_id, step_number, description) VALUES (?, ?, ?)",
+            "INSERT INTO workshop_step_descriptions (workshop_id, step_number, description) VALUES (%s, %s, %s)",
             (workshop_id, step_number, description),
         )
 
@@ -1158,8 +1172,8 @@ def rename_workshop(workshop_id):
             conn.execute(
                 """
                 UPDATE workshops
-                SET title = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
+                SET title = %s, updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s
                 """,
                 (title, workshop_id),
             )
@@ -1170,7 +1184,7 @@ def rename_workshop(workshop_id):
 @app.post("/expert/workshops/<int:workshop_id>/delete")
 def delete_workshop(workshop_id):
     with get_db() as conn:
-        conn.execute("DELETE FROM workshops WHERE id = ?", (workshop_id,))
+        conn.execute("DELETE FROM workshops WHERE id = %s", (workshop_id,))
 
     return redirect(url_for("expert_dashboard"))
 
@@ -1179,26 +1193,26 @@ def delete_workshop(workshop_id):
 def publish_workshop(workshop_id):
     with get_db() as conn:
         workshop = conn.execute(
-            "SELECT is_active FROM workshops WHERE id = ?", (workshop_id,)
+            "SELECT is_active FROM workshops WHERE id = %s", (workshop_id,)
         ).fetchone()
         if workshop:
             if workshop["is_active"]:
                 conn.execute(
-                    "UPDATE workshops SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    "UPDATE workshops SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
                     (workshop_id,),
                 )
             else:
                 conn.execute("UPDATE workshops SET is_active = 0 WHERE is_active = 1")
                 access_code_row = conn.execute(
-                    "SELECT access_code FROM workshops WHERE id = ?", (workshop_id,)
+                    "SELECT access_code FROM workshops WHERE id = %s", (workshop_id,)
                 ).fetchone()
                 access_code = access_code_row["access_code"] or generate_unique_access_code(conn)
                 conn.execute(
-                    "UPDATE workshops SET is_active = 1, access_code = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    "UPDATE workshops SET is_active = 1, access_code = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
                     (access_code, workshop_id),
                 )
                 conn.execute(
-                    "INSERT OR IGNORE INTO used_access_codes (code, workshop_id) VALUES (?, ?)",
+                    "INSERT INTO used_access_codes (code, workshop_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
                     (access_code, workshop_id),
                 )
     return redirect(url_for("expert_dashboard", workshop_id=workshop_id, tab=request.form.get("tab", "settings")))
@@ -1212,13 +1226,13 @@ def add_lifecycle_stage():
         try:
             with get_db() as conn:
                 next_order = conn.execute(
-                    "SELECT COALESCE(MAX(sort_order), 0) + 1 FROM lifecycle_stages"
-                ).fetchone()[0]
+                    "SELECT COALESCE(MAX(sort_order), 0) + 1 AS value FROM lifecycle_stages"
+                ).fetchone()["value"]
                 conn.execute(
-                    "INSERT INTO lifecycle_stages (name, sort_order) VALUES (?, ?)",
+                    "INSERT INTO lifecycle_stages (name, sort_order) VALUES (%s, %s) RETURNING id",
                     (name, next_order),
                 )
-        except sqlite3.IntegrityError:
+        except psycopg.IntegrityError:
             pass
 
     return redirect(url_for("expert_dashboard", workshop_id=workshop_id, tab="settings"))
@@ -1231,8 +1245,8 @@ def rename_lifecycle_stage(stage_id):
     if name:
         try:
             with get_db() as conn:
-                conn.execute("UPDATE lifecycle_stages SET name = ? WHERE id = ?", (name, stage_id))
-        except sqlite3.IntegrityError:
+                conn.execute("UPDATE lifecycle_stages SET name = %s WHERE id = %s", (name, stage_id))
+        except psycopg.IntegrityError:
             pass
 
     return redirect(url_for("expert_dashboard", workshop_id=workshop_id, tab="settings"))
@@ -1242,7 +1256,7 @@ def rename_lifecycle_stage(stage_id):
 def delete_lifecycle_stage(stage_id):
     workshop_id = request.form.get("workshop_id", type=int)
     with get_db() as conn:
-        conn.execute("DELETE FROM lifecycle_stages WHERE id = ?", (stage_id,))
+        conn.execute("DELETE FROM lifecycle_stages WHERE id = %s", (stage_id,))
 
     return redirect(url_for("expert_dashboard", workshop_id=workshop_id, tab="settings"))
 
@@ -1260,8 +1274,8 @@ def reorder_lifecycle_stages():
         }
         if set(stage_ids) != existing_ids or len(stage_ids) != len(existing_ids):
             return {"error": "Lifecycle stages changed. Refresh and try again."}, 409
-        conn.executemany(
-            "UPDATE lifecycle_stages SET sort_order = ? WHERE id = ?",
+        conn.cursor().executemany(
+            "UPDATE lifecycle_stages SET sort_order = %s WHERE id = %s",
             [(position, stage_id) for position, stage_id in enumerate(stage_ids, start=1)],
         )
 
@@ -1294,7 +1308,7 @@ def save_lifecycle_stages(workshop_id):
         # Temporary names avoid unique-name conflicts when managers reorder or swap names.
         for row in existing_rows:
             conn.execute(
-                "UPDATE lifecycle_stages SET name = ? WHERE id = ?",
+                "UPDATE lifecycle_stages SET name = %s WHERE id = %s",
                 (f"__stage_{row['id']}__", row["id"]),
             )
 
@@ -1302,26 +1316,26 @@ def save_lifecycle_stages(workshop_id):
         for position, (stage_id, name) in enumerate(submitted, start=1):
             if stage_id in existing_ids:
                 conn.execute(
-                    "UPDATE lifecycle_stages SET name = ?, sort_order = ? WHERE id = ?",
+                    "UPDATE lifecycle_stages SET name = %s, sort_order = %s WHERE id = %s",
                     (name, position, stage_id),
                 )
                 saved_stages.append((stage_id, name))
             else:
                 cursor = conn.execute(
-                    "INSERT INTO lifecycle_stages (name, sort_order) VALUES (?, ?)",
+                    "INSERT INTO lifecycle_stages (name, sort_order) VALUES (%s, %s) RETURNING id",
                     (name, position),
                 )
-                saved_stages.append((cursor.lastrowid, name))
+                saved_stages.append((cursor.fetchone()["id"], name))
 
         for stage_id in existing_ids - kept_ids:
-            conn.execute("DELETE FROM lifecycle_stages WHERE id = ?", (stage_id,))
+            conn.execute("DELETE FROM lifecycle_stages WHERE id = %s", (stage_id,))
 
         for step_number in (1, 2):
             for stage_id, stage_name in saved_stages:
                 existing_question = conn.execute(
                     """
                     SELECT id FROM workshop_questions
-                    WHERE workshop_id = ? AND step_number = ? AND lifecycle_stage_id = ?
+                    WHERE workshop_id = %s AND step_number = %s AND lifecycle_stage_id = %s
                     LIMIT 1
                     """,
                     (workshop_id, step_number, stage_id),
@@ -1331,7 +1345,7 @@ def save_lifecycle_stages(workshop_id):
                         """
                         INSERT INTO workshop_questions
                             (workshop_id, step_number, lifecycle_stage_id, question_text, guidance)
-                        VALUES (?, ?, ?, ?, '')
+                        VALUES (%s, %s, %s, %s, '')
                         """,
                         (workshop_id, step_number, stage_id, ""),
                     )
@@ -1357,7 +1371,7 @@ def add_question(workshop_id):
             conn.execute(
                 """
                 INSERT INTO workshop_questions (workshop_id, step_number, lifecycle_stage_id, question_text, guidance)
-                VALUES (?, ?, ?, ? ,?)
+                VALUES (%s, %s, %s, %s ,%s)
                 """,
                 (workshop_id, step_number, stage_id, question_text, guidance),
             )
@@ -1375,20 +1389,20 @@ def add_question_async(workshop_id):
 
     with get_db() as conn:
         stage = conn.execute(
-            "SELECT name FROM lifecycle_stages WHERE id = ?", (stage_id,)
+            "SELECT name FROM lifecycle_stages WHERE id = %s", (stage_id,)
         ).fetchone()
-        workshop = conn.execute("SELECT 1 FROM workshops WHERE id = ?", (workshop_id,)).fetchone()
+        workshop = conn.execute("SELECT 1 FROM workshops WHERE id = %s", (workshop_id,)).fetchone()
         if stage is None or workshop is None:
             return {"error": "Workshop or lifecycle stage not found."}, 404
         cursor = conn.execute(
             """
             INSERT INTO workshop_questions
                 (workshop_id, step_number, lifecycle_stage_id, question_text, guidance)
-            VALUES (?, ?, ?, '', '')
+            VALUES (%s, %s, %s, '', '') RETURNING id
             """,
             (workshop_id, step_number, stage_id),
         )
-        question_id = cursor.lastrowid
+        question_id = cursor.fetchone()["id"]
 
     return {
         "id": question_id,
@@ -1411,8 +1425,8 @@ def update_question(question_id):
             conn.execute(
                 """
                 UPDATE workshop_questions
-                SET lifecycle_stage_id = ?, question_text = ?, guidance = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ? AND workshop_id = ?
+                SET lifecycle_stage_id = %s, question_text = %s, guidance = %s, updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s AND workshop_id = %s
                 """,
                 (stage_id, question_text, guidance, question_id, workshop_id),
             )
@@ -1429,8 +1443,8 @@ def autosave_question(question_id):
         result = conn.execute(
             """
             UPDATE workshop_questions
-            SET question_text = ?, guidance = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
+            SET question_text = %s, guidance = %s, updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s
             """,
             (question_text, guidance, question_id),
         )
@@ -1445,19 +1459,19 @@ def delete_question(question_id):
     workshop_id = request.form.get("workshop_id", type=int)
     with get_db() as conn:
         question = conn.execute(
-            "SELECT workshop_id, step_number, lifecycle_stage_id FROM workshop_questions WHERE id = ?",
+            "SELECT workshop_id, step_number, lifecycle_stage_id FROM workshop_questions WHERE id = %s",
             (question_id,),
         ).fetchone()
         if question:
             stage_question_count = conn.execute(
                 """
-                SELECT COUNT(*) FROM workshop_questions
-                WHERE workshop_id = ? AND step_number = ? AND lifecycle_stage_id = ?
+                SELECT COUNT(*) AS value FROM workshop_questions
+                WHERE workshop_id = %s AND step_number = %s AND lifecycle_stage_id = %s
                 """,
                 (question["workshop_id"], question["step_number"], question["lifecycle_stage_id"]),
-            ).fetchone()[0]
+            ).fetchone()["value"]
             if stage_question_count > 1:
-                conn.execute("DELETE FROM workshop_questions WHERE id = ?", (question_id,))
+                conn.execute("DELETE FROM workshop_questions WHERE id = %s", (question_id,))
 
     return redirect(url_for("expert_dashboard", workshop_id=workshop_id, tab=active_tab))
 
@@ -1469,7 +1483,7 @@ def update_step_description(workshop_id, step_number):
         conn.execute(
             """
             INSERT INTO workshop_step_descriptions (workshop_id, step_number, description)
-            VALUES (?, ?, ?)
+            VALUES (%s, %s, %s)
             ON CONFLICT(workshop_id, step_number) DO UPDATE SET
                 description = excluded.description,
                 updated_at = CURRENT_TIMESTAMP
@@ -1487,7 +1501,7 @@ def user_workshop():
         workshop = None
         if session_workshop_id is not None:
             workshop = conn.execute(
-                "SELECT id, title FROM workshops WHERE id = ? AND is_active = 1",
+                "SELECT id, title FROM workshops WHERE id = %s AND is_active = 1",
                 (session_workshop_id,),
             ).fetchone()
         if workshop is None:
@@ -1496,7 +1510,7 @@ def user_workshop():
                 SELECT id, title
                 FROM workshops
                 WHERE is_active = 1
-                ORDER BY datetime(updated_at) DESC, id DESC
+                ORDER BY updated_at DESC, id DESC
                 LIMIT 1
                 """
             ).fetchone()
@@ -1512,7 +1526,7 @@ def user_workshop():
                 """
                 SELECT step_number, description
                 FROM workshop_step_descriptions
-                WHERE workshop_id = ?
+                WHERE workshop_id = %s
                 ORDER BY step_number
                 """,
                 (workshop["id"],),
@@ -1534,7 +1548,7 @@ def user_step():
     with get_db() as conn:
         if requested_workshop_id is not None:
             workshop = conn.execute(
-                "SELECT id, title FROM workshops WHERE id = ? AND is_active = 1",
+                "SELECT id, title FROM workshops WHERE id = %s AND is_active = 1",
                 (requested_workshop_id,),
             ).fetchone()
         else:
@@ -1543,7 +1557,7 @@ def user_step():
                 SELECT id, title
                 FROM workshops
                 WHERE is_active = 1
-                ORDER BY datetime(updated_at) DESC, id DESC
+                ORDER BY updated_at DESC, id DESC
                 LIMIT 1
                 """
             ).fetchone()
@@ -1553,7 +1567,7 @@ def user_step():
                 SELECT id, title
                 FROM workshops
                 WHERE is_active = 1
-                ORDER BY datetime(updated_at) DESC, id DESC
+                ORDER BY updated_at DESC, id DESC
                 LIMIT 1
                 """
             ).fetchone()
@@ -1568,7 +1582,7 @@ def user_step():
         step_rows = []
         if workshop is not None:
             step_rows = conn.execute(
-                "SELECT step_number, description FROM workshop_step_descriptions WHERE workshop_id = ? ORDER BY step_number",
+                "SELECT step_number, description FROM workshop_step_descriptions WHERE workshop_id = %s ORDER BY step_number",
                 (workshop["id"],),
             ).fetchall()
         step_numbers = [row["step_number"] for row in step_rows]
@@ -1600,7 +1614,7 @@ def user_step():
                         SELECT ss.strategy_response_id
                         FROM workshop_selected_strategies AS ss
                         JOIN workshop_comparison_responses AS r ON r.id = ss.strategy_response_id
-                        WHERE ss.user_id = ? AND r.workshop_id = ?
+                        WHERE ss.user_id = %s AND r.workshop_id = %s
                         """,
                         (user_id, workshop["id"]),
                     ).fetchall()
@@ -1625,8 +1639,8 @@ def user_step():
                            s.name AS stage_name, s.sort_order AS stage_sort_order
                     FROM workshop_comparison_responses AS r
                     JOIN lifecycle_stages AS s ON s.id = r.lifecycle_stage_id
-                    WHERE r.user_id = ? AND r.workshop_id = ?
-                    ORDER BY s.sort_order, s.id, datetime(r.created_at), r.id
+                    WHERE r.user_id = %s AND r.workshop_id = %s
+                    ORDER BY s.sort_order, s.id, r.created_at, r.id
                     """,
                     (user_id, workshop["id"]),
                 ).fetchall()
@@ -1655,8 +1669,8 @@ def user_step():
                            ON d.strategy_response_id = r.id AND d.user_id = ss.user_id
                     JOIN lifecycle_stages AS s
                          ON s.id = COALESCE(d.lifecycle_stage_id, r.lifecycle_stage_id)
-                    WHERE ss.user_id = ? AND r.workshop_id = ?
-                    ORDER BY s.sort_order, s.id, datetime(ss.selected_at), r.id
+                    WHERE ss.user_id = %s AND r.workshop_id = %s
+                    ORDER BY s.sort_order, s.id, ss.selected_at, r.id
                     """,
                     (user_id, workshop["id"]),
                 ).fetchall()
@@ -1681,9 +1695,9 @@ def user_step():
                            s.sort_order AS stage_sort_order
                     FROM workshop_questions AS q
                     JOIN lifecycle_stages AS s ON s.id = q.lifecycle_stage_id
-                    WHERE q.workshop_id = ? AND q.step_number = ?
+                    WHERE q.workshop_id = %s AND q.step_number = %s
                     ORDER BY q.step_number, s.sort_order, s.id,
-                             datetime(q.created_at), q.id
+                             q.created_at, q.id
                     """,
                     (workshop["id"], current_step),
                 ).fetchall()
@@ -1693,7 +1707,7 @@ def user_step():
                     SELECT r.question_id, r.response_text, q.step_number
                     FROM workshop_responses AS r
                     JOIN workshop_questions AS q ON q.id = r.question_id
-                    WHERE r.user_id = ? AND q.workshop_id = ?
+                    WHERE r.user_id = %s AND q.workshop_id = %s
                     """,
                     (user_id, workshop["id"]),
                 ).fetchall()
@@ -1708,8 +1722,8 @@ def user_step():
                     SELECT r.id, r.question_id, r.response_text, r.polarity, r.category
                     FROM workshop_classified_responses AS r
                     JOIN workshop_questions AS q ON q.id = r.question_id
-                    WHERE r.user_id = ? AND q.workshop_id = ? AND q.step_number = 2
-                    ORDER BY datetime(r.created_at), r.id
+                    WHERE r.user_id = %s AND q.workshop_id = %s AND q.step_number = 2
+                    ORDER BY r.created_at, r.id
                     """,
                     (user_id, workshop["id"]),
                 ).fetchall()
@@ -1722,8 +1736,8 @@ def user_step():
                     """
                     SELECT r.id, r.lifecycle_stage_id, r.response_text, r.category
                     FROM workshop_comparison_responses AS r
-                    WHERE r.user_id = ? AND r.workshop_id = ?
-                    ORDER BY datetime(r.created_at), r.id
+                    WHERE r.user_id = %s AND r.workshop_id = %s
+                    ORDER BY r.created_at, r.id
                     """,
                     (user_id, workshop["id"]),
                 ).fetchall()
@@ -1738,7 +1752,7 @@ def user_step():
                            d.lifecycle_stage_id, d.category
                     FROM workshop_strategy_details AS d
                     JOIN workshop_comparison_responses AS r ON r.id = d.strategy_response_id
-                    WHERE d.user_id = ? AND r.workshop_id = ?
+                    WHERE d.user_id = %s AND r.workshop_id = %s
                     """,
                     (user_id, workshop["id"]),
                 ).fetchall()
@@ -1746,7 +1760,7 @@ def user_step():
                 for entry in conn.execute(
                     """SELECT e.* FROM workshop_strategy_entries AS e
                        JOIN workshop_comparison_responses AS r ON r.id = e.strategy_response_id
-                       WHERE e.user_id = ? AND r.workshop_id = ? ORDER BY e.id""",
+                       WHERE e.user_id = %s AND r.workshop_id = %s ORDER BY e.id""",
                     (user_id, workshop["id"]),
                 ).fetchall():
                     strategy_entries.setdefault(entry["strategy_response_id"], []).append(entry)
@@ -1758,7 +1772,7 @@ def user_step():
                     SELECT c.strategy_response_id, c.scale_value
                     FROM workshop_strategy_scale_choices AS c
                     JOIN workshop_comparison_responses AS r ON r.id = c.strategy_response_id
-                    WHERE c.user_id = ? AND r.workshop_id = ?
+                    WHERE c.user_id = %s AND r.workshop_id = %s
                     """,
                     (user_id, workshop["id"]),
                 ).fetchall()
@@ -1770,7 +1784,7 @@ def user_step():
                     SELECT d.strategy_response_id, d.scale_value, d.definition
                     FROM workshop_strategy_scale_definitions AS d
                     JOIN workshop_comparison_responses AS r ON r.id = d.strategy_response_id
-                    WHERE d.user_id = ? AND r.workshop_id = ?
+                    WHERE d.user_id = %s AND r.workshop_id = %s
                     """,
                     (user_id, workshop["id"]),
                 ).fetchall()
@@ -1784,8 +1798,8 @@ def user_step():
                            s.name AS stage_name
                     FROM workshop_questions AS q
                     JOIN lifecycle_stages AS s ON s.id = q.lifecycle_stage_id
-                    WHERE q.workshop_id = ? AND q.step_number IN (1, 2)
-                    ORDER BY q.step_number, s.sort_order, s.id, datetime(q.created_at), q.id
+                    WHERE q.workshop_id = %s AND q.step_number IN (1, 2)
+                    ORDER BY q.step_number, s.sort_order, s.id, q.created_at, q.id
                     """,
                     (workshop["id"],),
                 ).fetchall()
@@ -1903,7 +1917,7 @@ def save_step_response(question_id):
             """
             SELECT id, workshop_id, step_number, lifecycle_stage_id
             FROM workshop_questions
-            WHERE id = ?
+            WHERE id = %s
             """,
             (question_id,),
         ).fetchone()
@@ -1925,7 +1939,7 @@ def save_step_response(question_id):
         conn.execute(
             """
             INSERT INTO workshop_responses (user_id, question_id, response_text)
-            VALUES (?, ?, ?)
+            VALUES (%s, %s, %s)
             ON CONFLICT(user_id, question_id) DO UPDATE SET
                 response_text = excluded.response_text,
                 updated_at = CURRENT_TIMESTAMP
@@ -1959,7 +1973,7 @@ def add_classified_response(question_id):
         polarity, category = classification.split(":", 1)
     with get_db() as conn:
         question = conn.execute(
-            "SELECT id, workshop_id, step_number, lifecycle_stage_id FROM workshop_questions WHERE id = ?",
+            "SELECT id, workshop_id, step_number, lifecycle_stage_id FROM workshop_questions WHERE id = %s",
             (question_id,),
         ).fetchone()
         if question is None or question["step_number"] != 2:
@@ -1974,7 +1988,7 @@ def add_classified_response(question_id):
             """
             INSERT INTO workshop_classified_responses
                 (user_id, question_id, response_text, polarity, category)
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s)
             """,
             (user_id, question_id, response_text, polarity, category),
         )
@@ -1995,13 +2009,13 @@ def delete_classified_response(response_id):
             SELECT r.id, q.id AS question_id, q.workshop_id, q.step_number, q.lifecycle_stage_id
             FROM workshop_classified_responses AS r
             JOIN workshop_questions AS q ON q.id = r.question_id
-            WHERE r.id = ? AND r.user_id = ?
+            WHERE r.id = %s AND r.user_id = %s
             """,
             (response_id, user_id),
         ).fetchone()
         if response is None:
             return redirect(url_for("user_step"))
-        conn.execute("DELETE FROM workshop_classified_responses WHERE id = ? AND user_id = ?", (response_id, user_id))
+        conn.execute("DELETE FROM workshop_classified_responses WHERE id = %s AND user_id = %s", (response_id, user_id))
 
     return redirect(url_for("user_step", workshop_id=response["workshop_id"], step=response["step_number"],
                             stage_id=response["lifecycle_stage_id"], question_id=response["question_id"]))
@@ -2021,8 +2035,8 @@ def add_solution_response(stage_id):
             """
             SELECT 1
             FROM lifecycle_stages AS s
-            JOIN workshops AS w ON w.id = ?
-            WHERE s.id = ?
+            JOIN workshops AS w ON w.id = %s
+            WHERE s.id = %s
             """,
             (workshop_id, stage_id),
         ).fetchone()
@@ -2036,7 +2050,7 @@ def add_solution_response(stage_id):
             """
             INSERT INTO workshop_comparison_responses
                 (user_id, workshop_id, lifecycle_stage_id, response_text, category)
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s)
             """,
             (user_id, workshop_id, stage_id, response_text, category),
         )
@@ -2054,12 +2068,12 @@ def delete_solution_response(response_id):
         response = conn.execute(
             """SELECT r.id, r.workshop_id, r.lifecycle_stage_id
                FROM workshop_comparison_responses AS r
-               WHERE r.id = ? AND r.user_id = ?""",
+               WHERE r.id = %s AND r.user_id = %s""",
             (response_id, user_id),
         ).fetchone()
         if response is None:
             return redirect(url_for("user_step"))
-        conn.execute("DELETE FROM workshop_comparison_responses WHERE id = ? AND user_id = ?", (response_id, user_id))
+        conn.execute("DELETE FROM workshop_comparison_responses WHERE id = %s AND user_id = %s", (response_id, user_id))
     return redirect(url_for("user_step", workshop_id=response["workshop_id"], step=3,
                             stage_id=response["lifecycle_stage_id"]))
 
@@ -2082,12 +2096,12 @@ def save_strategy_details(strategy_id):
             """
             SELECT id, workshop_id, lifecycle_stage_id
             FROM workshop_comparison_responses
-            WHERE id = ? AND user_id = ?
+            WHERE id = %s AND user_id = %s
             """,
             (strategy_id, user_id),
         ).fetchone()
         stage_exists = conn.execute(
-            "SELECT 1 FROM lifecycle_stages WHERE id = ?",
+            "SELECT 1 FROM lifecycle_stages WHERE id = %s",
             (lifecycle_stage_id,),
         ).fetchone()
         if strategy is None:
@@ -2100,8 +2114,8 @@ def save_strategy_details(strategy_id):
         if entry_id is not None:
             updated = conn.execute(
                 """UPDATE workshop_strategy_entries
-                   SET lsc = ?, measurement = ?, comments = ?, lifecycle_stage_id = ?, category = ?
-                   WHERE id = ? AND user_id = ? AND strategy_response_id = ?""",
+                   SET lsc = %s, measurement = %s, comments = %s, lifecycle_stage_id = %s, category = %s
+                   WHERE id = %s AND user_id = %s AND strategy_response_id = %s""",
                 (lsc, measurement, comments, lifecycle_stage_id, category, entry_id, user_id, strategy_id),
             )
             if updated.rowcount != 1:
@@ -2110,7 +2124,7 @@ def save_strategy_details(strategy_id):
             conn.execute(
                 """INSERT INTO workshop_strategy_entries
                    (user_id, strategy_response_id, lsc, measurement, comments, lifecycle_stage_id, category)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (%s, %s, %s, %s, %s, %s, %s)""",
                 (user_id, strategy_id, lsc, measurement, comments, lifecycle_stage_id, category),
             )
 
@@ -2118,7 +2132,7 @@ def save_strategy_details(strategy_id):
             """
             INSERT INTO workshop_strategy_details
                 (user_id, strategy_response_id, lsc, measurement, comments, lifecycle_stage_id, category)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT(user_id, strategy_response_id) DO UPDATE SET
                 lsc = excluded.lsc,
                 measurement = excluded.measurement,
@@ -2142,19 +2156,19 @@ def update_strategy_selection(strategy_id):
     selected = request.form.get("selected") == "1"
     with get_db() as conn:
         strategy = conn.execute(
-            "SELECT id FROM workshop_comparison_responses WHERE id = ? AND user_id = ?",
+            "SELECT id FROM workshop_comparison_responses WHERE id = %s AND user_id = %s",
             (strategy_id, user_id),
         ).fetchone()
         if strategy is None:
             return ("Strategy not found", 404)
         if selected:
             conn.execute(
-                "INSERT OR IGNORE INTO workshop_selected_strategies (user_id, strategy_response_id) VALUES (?, ?)",
+                "INSERT INTO workshop_selected_strategies (user_id, strategy_response_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
                 (user_id, strategy_id),
             )
         else:
             conn.execute(
-                "DELETE FROM workshop_selected_strategies WHERE user_id = ? AND strategy_response_id = ?",
+                "DELETE FROM workshop_selected_strategies WHERE user_id = %s AND strategy_response_id = %s",
                 (user_id, strategy_id),
             )
     return ("", 204)
@@ -2184,7 +2198,7 @@ def save_strategy_scale(strategy_id):
                  ON ss.strategy_response_id = r.id AND ss.user_id = r.user_id
             LEFT JOIN workshop_strategy_details AS d
                  ON d.strategy_response_id = r.id AND d.user_id = r.user_id
-            WHERE r.id = ? AND r.user_id = ?
+            WHERE r.id = %s AND r.user_id = %s
             """,
             (strategy_id, user_id),
         ).fetchone()
@@ -2193,18 +2207,18 @@ def save_strategy_scale(strategy_id):
         conn.execute(
             """
             INSERT INTO workshop_strategy_scale_choices (user_id, strategy_response_id, scale_value)
-            VALUES (?, ?, ?)
+            VALUES (%s, %s, %s)
             ON CONFLICT(user_id, strategy_response_id) DO UPDATE SET
                 scale_value = excluded.scale_value,
                 updated_at = CURRENT_TIMESTAMP
             """,
             (user_id, strategy_id, scale_value),
         )
-        conn.executemany(
+        conn.cursor().executemany(
             """
             INSERT INTO workshop_strategy_scale_definitions
                 (user_id, strategy_response_id, scale_value, definition)
-            VALUES (?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s)
             ON CONFLICT(user_id, strategy_response_id, scale_value) DO UPDATE SET
                 definition = excluded.definition,
                 updated_at = CURRENT_TIMESTAMP
