@@ -64,14 +64,14 @@ function getChartLayout(width, height) {
         // Reserve the upper area for overview charts.
         top: height * chartTopFraction,
         // Leave a dedicated column on the right for the chart legend.
-        right: Math.min(300, width * 0.2),
+        right: Math.max(278, Math.min(300, width * 0.2)),
         bottom: Math.min(110, height * 0.26),
         left: Math.min(100, width * 0.12),
     };
     const overviewHeight = Math.min(250, height * 0.2);
     // Let totals extend higher while leaving room above the chart.
     const totalOverviewHeight = Math.min(overviewHeight * 1.5, Math.max(1, margin.top - 24));
-    const legendWidth = Math.min(250, width * 0.2);
+    const legendWidth = Math.min(250, margin.right - 28);
     const bottom = height - margin.bottom;
     const right = Math.max(margin.left + 1, width - margin.right);
     // Shared endpoint for the top boundary and horizontal axis line.

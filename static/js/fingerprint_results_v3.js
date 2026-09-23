@@ -489,7 +489,7 @@ function getChartLayout(width, height) {
     const panelHeightReduction = 60;
     height -= panelHeightReduction;
     const panelGap = 28;
-    const sideWidth = Math.min(340, width * 0.28);
+    const sideWidth = 340;
     const sideLeft = width - sideWidth - 20;
     const right = sideLeft - panelGap - 20;
     const scaleTop = 36; // 20px padding below the shared background top.

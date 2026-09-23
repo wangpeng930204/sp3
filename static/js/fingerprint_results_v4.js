@@ -64,15 +64,16 @@ function getChartLayout(width, height) {
         // Reserve the upper area for overview charts.
         top: height * chartTopFraction,
         // Leave a dedicated column on the right for the chart legend.
-        right: Math.min(300, width * 0.2),
+        right: Math.max(278, Math.min(300, width * 0.2)),
         bottom: Math.min(110, height * 0.26),
         left: Math.min(100, width * 0.12),
     };
-    const overviewHeight = Math.min(250, height * 0.2);
+    const overviewHeight = Math.max(products.length * 100, Math.min(250, height * 0.2));
     // Let totals extend higher while leaving room above the chart.
     // const totalOverviewHeight = Math.min(overviewHeight * 1.5, Math.max(1, margin.top - 24));
     const totalOverviewHeight = overviewHeight;
-    const legendWidth = Math.min(250, width * 0.2);
+    margin.top = Math.max(margin.top, overviewHeight + 24);
+    const legendWidth = Math.min(250, margin.right - 28);
     const bottom = height - margin.bottom;
     const right = Math.max(margin.left + 1, width - margin.right);
     // Shared endpoint for the top boundary and horizontal axis line.
@@ -557,10 +558,15 @@ function drawOverviewDirections(parent, left, right, top, bottom, ratingLabel, i
         ]).join('line').attr('x1', d => d.x1).attr('y1', d => d.y1)
         .attr('x2', d => d.x2).attr('y2', d => d.y2)
         .attr('marker-end', 'url(#overview-direction-arrow)');
-    key.append('text').attr('class', 'axis-title').attr('fill', '#17212b')
+    const label = key.append('text').attr('class', 'axis-title').attr('fill', '#17212b')
         .attr('x', (start + end) / 2).attr('y', arrowY + 14)
-        .attr('text-anchor', 'middle').text(ratingLabel)
-        .each(function () { fitLabel(this, right - left - inset - 8); });
+        .attr('text-anchor', 'middle').text(ratingLabel);
+    if (label.node().getComputedTextLength() > end - start) {
+        label.text(null).selectAll('tspan').data(ratingLabel.split(' ')).join('tspan')
+            .attr('x', (start + end) / 2).attr('dy', (_, index) => index ? 14 : 0)
+            .text(word => word);
+    }
+    label.append('title').text(ratingLabel);
 }
 
 function drawHorizontalOverview({ margin, overviewHeight, totalOverviewHeight, right, legendWidth }, bars, panelFor, className) {
@@ -577,7 +583,7 @@ function drawHorizontalOverview({ margin, overviewHeight, totalOverviewHeight, r
         products.forEach((product, index) => {
             const rowTop = top + index * rowHeight;
             overview.append('text').attr('class', 'shared-product-label')
-                .attr('x', margin.left - 48).attr('y', rowTop + rowHeight * 0.7 - barThickness / 2)
+                .attr('x', margin.left - 48).attr('y', rowTop + rowHeight - 44 - barThickness / 2)
                 .attr('text-anchor', 'end').attr('dominant-baseline', 'middle')
                 .attr('font-size', 12).attr('fill', '#17212b')
                 .text(productShortNames.get(product.id))
@@ -590,7 +596,8 @@ function drawHorizontalOverview({ margin, overviewHeight, totalOverviewHeight, r
         const { left, width } = panelFor(bar);
         const rowIndex = products.findIndex(product => product.id === bar.productId);
         const rowTop = top + rowIndex * rowHeight;
-        const baseline = rowTop + rowHeight * 0.7;
+        // Reserve 44px for the arrow, two label lines, and border clearance.
+        const baseline = rowTop + rowHeight - 44;
         const inset = 0;
         const ratingX = d3.scaleLinear().domain([0, maximum]).nice()
             .range([left + inset + 4, left + Math.max(inset + 5, width - 8)]);
