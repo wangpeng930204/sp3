@@ -7,10 +7,15 @@
             <div class="strategy-saved-list" aria-label="Saved responses">
                 <span class="response-label">Saved LSC</span>
                 {% for entry in saved_entries %}
-                <button type="button" class="classified-card strategy-saved-name {{ entry.category }}"
+                <div class="classified-card strategy-saved-item {{ entry.category }}">
+                <button type="button" class="strategy-saved-name"
                         data-edit-saved-strategy data-entry='{{ dict(entry)|tojson }}' aria-controls="strategyForm" title="Load saved details to edit">
                     {{ entry.lsc or 'Untitled LSC' }}
                 </button>
+                <form method="post" action="{{ url_for('delete_strategy_entry', entry_id=entry.id) }}">
+                    <button class="classified-delete" type="submit" aria-label="Delete {{ entry.lsc or 'untitled LSC' }}" title="Delete LSC">&times;</button>
+                </form>
+                </div>
                 {% endfor %}
             </div>
         {% endif %}

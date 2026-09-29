@@ -1,6 +1,8 @@
-const chartTopFraction = 0.40;
+const chartTopFraction = 0.30;
 
 const host = document.getElementById('fingerprint-chart');
+// Keep overview dimensions stable when the lower area grows to fit the legend.
+const initialChartHeight = host.clientHeight;
 const data = JSON.parse(document.getElementById('fingerprint-data').textContent);
 const missingEvaluationDetails = data.some(row =>
     ['userId', 'user', 'confidence', 'comments'].some(field => row[field] == null));
@@ -51,7 +53,7 @@ const criteria = Array.from(d3.group(data, row => row.criterionId), ([id, rows])
 let overviewBars;
 let totalOverviewBars;
 const criterionNames = new Map(criteria.map(criterion => [criterion.id, criterion.name]));
-let selectedRating = data.find(row => row.userId === users[0]?.id) ?? null;
+let selectedRating = null;
 let selectedOverviewRows = null;
 let confidenceMin = 0;
 let confidenceMax = 100;
@@ -60,17 +62,20 @@ const svg = d3.select(host).append('svg')
     .attr('aria-label', 'Y values from 0 to 9, with evaluated products grouped by LSC criterion on the X-axis');
 
 function getChartLayout(width, height) {
+    const overviewCanvasHeight = Math.min(height, initialChartHeight);
     const margin = {
         // Reserve the upper area for overview charts.
-        top: height * chartTopFraction,
+        top: overviewCanvasHeight * chartTopFraction,
         // Leave a dedicated column on the right for the chart legend.
         right: Math.max(278, Math.min(300, width * 0.2)),
         bottom: Math.min(110, height * 0.26),
         left: Math.min(100, width * 0.12),
     };
-    const overviewHeight = Math.max(products.length * 100, Math.min(250, height * 0.2));
+    const overviewHeight = Math.max(products.length * 100, Math.min(250, overviewCanvasHeight * 0.2));
     margin.top = Math.max(margin.top, overviewHeight + 24);
     const legendWidth = Math.min(250, margin.right - 28);
+    // Give the scale distribution a useful minimum height even with many products.
+    height = Math.max(height, margin.top + 440 + margin.bottom);
     const bottom = height - margin.bottom;
     const right = Math.max(margin.left + 1, width - margin.right);
     // Shared endpoint for the top boundary and horizontal axis line.
@@ -80,10 +85,12 @@ function getChartLayout(width, height) {
 
 function renderChart() {
     const width = host.clientWidth;
-    const height = host.clientHeight;
+    let height = host.clientHeight;
     if (!width || !height) return;
 
     const layout = getChartLayout(width, height);
+    height = layout.height;
+    if (host.clientHeight < height) host.style.height = `${height}px`;
     const { margin, bottom, right } = layout;
     // Pad the scale at both ends so scores 0 and 9 clear the chart boundaries.
     const y = d3.scaleLinear().domain([-0.5, 9.5]).range([bottom, margin.top]);
@@ -106,6 +113,7 @@ function renderChart() {
     drawRatings(layout, x, y);
     drawSelectedUserConnection();
     drawLegend(layout);
+    requestAnimationFrame(fitLegendHeight);
     drawOverviewSelection();
 }
 
@@ -175,9 +183,9 @@ function drawBoundaries({ margin, overviewHeight, bottom, right, boundaryRight }
 }
 
 function drawAxes({ margin, bottom, boundaryRight, axisBottom = bottom }, x, y) {
-    svg.append('text').attr('class', 'axis-title')
+    svg.append('text').attr('class', 'axis-title individual-rating-title')
         .attr('transform', `translate(${margin.left - 48},${(margin.top + bottom) / 2}) rotate(-90)`)
-        .attr('text-anchor', 'middle').text('Individual rating');
+        .attr('text-anchor', 'middle').text('Individual Rating');
     svg.append('g')
         .attr('class', 'axis')
         .attr('transform', `translate(${margin.left},0)`)
@@ -241,7 +249,7 @@ function drawUserSummary(container) {
     const summary = container.append('div').attr('class', 'user-summary')
         .attr('role', 'status').attr('aria-live', 'polite').attr('aria-atomic', 'true')
         .style('min-height', '90px')
-        .style('box-sizing', 'border-box').style('overflow-y', 'auto')
+        .style('box-sizing', 'border-box')
         .style('margin-top', '12px').style('padding', '8px 0')
         .style('line-height', '1.5').style('overflow-wrap', 'anywhere');
     summary.append('div').style('font-weight', '600').style('margin-bottom', '8px')
@@ -253,6 +261,7 @@ function drawUserSummary(container) {
 }
 
 function updateUserSummary() {
+    requestAnimationFrame(fitLegendHeight);
     const summary = svg.select('.user-summary');
     summary.select('.user-summary-name')
         .text(selectedRating === null ? '' : selectedRating.user);
@@ -358,6 +367,20 @@ function fitLabel(node, availableWidth) {
     while (text.length && node.getComputedTextLength() > Math.max(0, availableWidth)) {
         text = text.slice(0, -1);
         label.text(text ? `${text}…` : '');
+    }
+}
+
+// Measure natural legend content, independent of the foreignObject height.
+// Grow only the lower area; ResizeObserver redraws the scale to the new height.
+function fitLegendHeight() {
+    const legend = svg.select('.chart-legend').node();
+    if (!legend || !legend.firstElementChild) return;
+    const available = Number(legend.getAttribute('height'));
+    const required = legend.firstElementChild.scrollHeight;
+    // scrollHeight is rounded to whole CSS pixels; SVG heights can be fractional.
+    // Ignore that rounding difference rather than triggering another resize.
+    if (required > Math.ceil(available)) {
+        host.style.height = `${host.clientHeight + Math.ceil(required - available) + 8}px`;
     }
 }
 
@@ -618,15 +641,15 @@ function drawSelectedUserConnection() {
 function drawLegend(layout) {
     const { margin, right, bottom, legendWidth, markerArea } = layout;
     const legendTop = margin.top + 20;
-    const legendContainer = svg.append('foreignObject')
+    const legendContainer = svg.append('foreignObject').attr('class', 'chart-legend')
         .attr('x', right + 14).attr('y', legendTop)
         .attr('width', legendWidth)
         .attr('height', Math.max(1, bottom - legendTop))
         .append('xhtml:div')
-        .style('height', '100%').style('display', 'flex').style('flex-direction', 'column')
+        .style('display', 'flex').style('flex-direction', 'column')
         .style('font-size', '12px').style('color', '#17212b');
     const legend = legendContainer.append('div')
-        .style('flex', '1 1 auto').style('min-height', '0').style('overflow-y', 'auto');
+        .style('flex', '0 0 auto');
     drawConfidenceFilter(legendContainer, layout);
     products.forEach(product => {
         const row = legend.append('div').style('margin-top', '12px');

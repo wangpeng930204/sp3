@@ -5,7 +5,7 @@ from psycopg.rows import dict_row
 from dotenv import load_dotenv
 from pathlib import Path
 
-from flask import Flask, redirect, render_template, request, send_from_directory, session, url_for
+from flask import Flask, abort, redirect, render_template, request, send_from_directory, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
 load_dotenv(Path(__file__).with_name(".env"))
@@ -144,6 +144,7 @@ def init_db():
             """,
             ("Admin", "admin@example.local", generate_password_hash("admin"), "admin"),
         )
+        conn.commit()
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS workshops (
@@ -667,6 +668,25 @@ def fingerprint_results(version="v2"):
         if respondent is None:
             return redirect(url_for("fingerprint_start"))
 
+    return render_fingerprint_results(workshop_id, version, respondent)
+
+
+# Temporary viewing links for workshop 1811. Remove these routes after sharing.
+@app.route("/fingerprint/results/overall", defaults={"version": "v1"})
+@app.route("/fingerprint/results/detail", defaults={"version": "v2"})
+def fingerprint_results_1811(version):
+    with get_db() as conn:
+        workshop = conn.execute(
+            "SELECT id FROM workshops WHERE is_active = 1 AND access_code = %s",
+            ("1811",),
+        ).fetchone()
+    if workshop is None:
+        abort(404)
+    return render_fingerprint_results(workshop["id"], version)
+
+
+def render_fingerprint_results(workshop_id, version, respondent=None):
+    with get_db() as conn:
         rows = conn.execute(
             """
             SELECT product.id AS product_id, product.name AS product_name,
@@ -1874,6 +1894,12 @@ def user_step():
             if question["id"] in answered_question_ids
         }
 
+    overview_lsc_rows = []
+    if current_step == 4:
+        for strategy in questions:
+            for entry in strategy_entries.get(strategy["id"], []):
+                overview_lsc_rows.append({"strategy": strategy, "detail": entry})
+
     return render_template(
         "user_step.html",
         workshop=workshop,
@@ -1891,6 +1917,7 @@ def user_step():
         solution_responses=solution_responses,
         strategy_details=strategy_details,
         strategy_entries=strategy_entries,
+        overview_lsc_rows=overview_lsc_rows,
         selected_strategy_ids=selected_strategy_ids,
         strategy_scale_choices=strategy_scale_choices,
         strategy_scale_definitions=strategy_scale_definitions,
@@ -2146,6 +2173,49 @@ def save_strategy_details(strategy_id):
 
     return redirect(url_for("user_step", workshop_id=strategy["workshop_id"], step=4,
                             stage_id=strategy["lifecycle_stage_id"], question_id=strategy_id, saved=1))
+
+
+@app.post("/user-step/strategy-entries/<int:entry_id>/delete")
+def delete_strategy_entry(entry_id):
+    user_id = session.get("user_id")
+    if user_id is None:
+        return redirect(url_for("login"))
+    with get_db() as conn:
+        entry = conn.execute(
+            """SELECT e.strategy_response_id, r.workshop_id, r.lifecycle_stage_id
+               FROM workshop_strategy_entries AS e
+               JOIN workshop_comparison_responses AS r ON r.id = e.strategy_response_id
+               WHERE e.id = %s AND e.user_id = %s AND r.user_id = %s
+               FOR UPDATE OF r""",
+            (entry_id, user_id, user_id),
+        ).fetchone()
+        if entry is None:
+            return ("Saved response not found", 404)
+        strategy_id = entry["strategy_response_id"]
+        conn.execute("DELETE FROM workshop_strategy_entries WHERE id = %s AND user_id = %s",
+                     (entry_id, user_id))
+        remaining = conn.execute(
+            """SELECT * FROM workshop_strategy_entries
+               WHERE strategy_response_id = %s AND user_id = %s ORDER BY id DESC LIMIT 1""",
+            (strategy_id, user_id),
+        ).fetchone()
+        if remaining:
+            conn.execute(
+                """UPDATE workshop_strategy_details
+                   SET lsc = %s, measurement = %s, comments = %s,
+                       lifecycle_stage_id = %s, category = %s, updated_at = CURRENT_TIMESTAMP
+                   WHERE strategy_response_id = %s AND user_id = %s""",
+                (remaining["lsc"], remaining["measurement"], remaining["comments"],
+                 remaining["lifecycle_stage_id"], remaining["category"], strategy_id, user_id),
+            )
+        else:
+            # Remove the legacy summary too, so startup cannot recreate a deleted entry.
+            for table in ("workshop_strategy_details", "workshop_selected_strategies",
+                          "workshop_strategy_scale_choices", "workshop_strategy_scale_definitions"):
+                conn.execute(f"DELETE FROM {table} WHERE strategy_response_id = %s AND user_id = %s",
+                             (strategy_id, user_id))
+    return redirect(url_for("user_step", workshop_id=entry["workshop_id"], step=4,
+                            stage_id=entry["lifecycle_stage_id"], question_id=strategy_id))
 
 
 @app.post("/user-step/strategy-selection/<int:strategy_id>")

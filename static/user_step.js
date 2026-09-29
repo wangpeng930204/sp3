@@ -161,8 +161,9 @@
 
     heatmapChecks.forEach(check => check.addEventListener("change", async () => {
         const selected = check.checked;
+        const related = heatmapChecks.filter(item => item.dataset.selectionUrl === check.dataset.selectionUrl);
+        related.forEach(item => { item.checked = selected; item.disabled = true; });
         updateHeatmapStatistics();
-        check.disabled = true;
         try {
             const body = new URLSearchParams({ selected: selected ? "1" : "0" });
             const response = await fetch(check.dataset.selectionUrl, {
@@ -172,11 +173,11 @@
             });
             if (!response.ok) throw new Error("Selection could not be saved");
         } catch (error) {
-            check.checked = !selected;
+            related.forEach(item => { item.checked = !selected; });
             updateHeatmapStatistics();
             window.alert("The LSC selection could not be saved. Please try again.");
         } finally {
-            check.disabled = false;
+            related.forEach(item => { item.disabled = false; });
         }
     }));
     updateHeatmapStatistics();

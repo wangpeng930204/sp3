@@ -51,7 +51,7 @@ const criteria = Array.from(d3.group(data, row => row.criterionId), ([id, rows])
 let overviewBars;
 let totalOverviewBars;
 const criterionNames = new Map(criteria.map(criterion => [criterion.id, criterion.name]));
-let selectedRating = data.find(row => row.userId === users[0]?.id) ?? null;
+let selectedRating = null;
 let selectedOverviewRows = null;
 let confidenceMin = 0;
 let confidenceMax = 100;
@@ -128,9 +128,9 @@ function drawOverviewSelection() {
 }
 
 function drawAxes({ margin, bottom, boundaryRight, axisBottom = bottom }, x, y) {
-    svg.append('text').attr('class', 'axis-title')
+    svg.append('text').attr('class', 'axis-title individual-rating-title')
         .attr('transform', `translate(${margin.left - 48},${(margin.top + bottom) / 2}) rotate(-90)`)
-        .attr('text-anchor', 'middle').text('Individual rating');
+        .attr('text-anchor', 'middle').text('Individual Rating');
     svg.append('g')
         .attr('class', 'axis')
         .attr('transform', `translate(${margin.left},0)`)

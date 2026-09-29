@@ -1316,3 +1316,8 @@
             transform: translateX(50%);
         }
     }
+
+    .strategy-saved-item { display: flex; align-items: center; gap: 8px; max-width: 100%; padding: 4px 8px; }
+    .strategy-saved-item:has(.classified-delete) { padding-right: 8px; }
+    .strategy-saved-item .strategy-saved-name { min-width: 0; border: 0; background: transparent; }
+    .strategy-saved-item form { margin-left: auto; flex-shrink: 0; }

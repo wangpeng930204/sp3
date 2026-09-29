@@ -5,8 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Fingerprint results | Digital SPD</title>
     <style>
-        body { margin: 0; background: #fff; font-family: Arial, sans-serif; }
-        #fingerprint-chart { width: 100%; min-width: 960px; height: 100vh; height: 100dvh; min-height: 640px; overflow: hidden; }
+        body { margin: 0; min-height: 100vh; min-height: 100dvh; display: flex; background: #fff; font-family: Arial, sans-serif; }
+        #fingerprint-frame { flex: none; margin: auto; padding: var(--panel-gap, 24px); }
+        #fingerprint-chart { width: 960px; height: 640px; overflow: hidden; }
         #fingerprint-chart svg { display: block; max-width: 100%; }
         {% if chart_script == 'js/fingerprint_results_v3.js' %}
         body { background: #f1f5f9; }
@@ -16,6 +17,7 @@
         #fingerprint-chart foreignObject > div { transform: translateZ(0); }
         .axis { color: #17212b; }
         .axis-title, .confidence-filter-title { font-weight: 600; }
+        .individual-rating-title { font-kerning: none; font-variant-ligatures: none; letter-spacing: 0.4px; }
         .confidence-filter-title { margin-bottom: 4px; }
         .rating-tooltip {
             position: fixed; z-index: 1000; pointer-events: none;
@@ -36,7 +38,20 @@
     </style>
 </head>
 <body>
-    <div id="fingerprint-chart"></div>
+    <div id="fingerprint-frame"><div id="fingerprint-chart"></div></div>
+    <script>
+        // Size the panel and its surrounding space once as one composition.
+        // Browser zoom then scales both together without reflowing subpanels.
+        // The frame stays centered when it fits and scrolls when it is larger.
+        const chartCanvas = document.getElementById('fingerprint-chart');
+        const chartFrame = document.getElementById('fingerprint-frame');
+        const viewportWidth = document.documentElement.clientWidth;
+        const viewportHeight = window.innerHeight;
+        const panelGap = Math.round(Math.min(viewportWidth, viewportHeight) * 0.03);
+        chartFrame.style.setProperty('--panel-gap', `${panelGap}px`);
+        chartCanvas.style.width = `${Math.max(960, viewportWidth - 2 * panelGap)}px`;
+        chartCanvas.style.height = `${Math.max(640, viewportHeight - 2 * panelGap)}px`;
+    </script>
     <script id="fingerprint-data" type="application/json">{{ chart_data | tojson }}</script>
     <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
     <script src="{{ url_for('static', filename='js/fingerprint_rating_tooltip.js') }}"></script>
