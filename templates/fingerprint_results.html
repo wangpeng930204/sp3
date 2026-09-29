@@ -17,8 +17,26 @@
         #fingerprint-chart foreignObject > div { transform: translateZ(0); }
         .axis { color: #17212b; }
         .axis-title, .confidence-filter-title { font-weight: 600; }
-        .individual-rating-title { font-kerning: none; font-variant-ligatures: none; letter-spacing: 0.4px; }
+        #fingerprint-chart svg text.individual-rating-title,
+        #fingerprint-chart svg text.criteria-axis-title {
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            font-weight: 700;
+            font-style: normal;
+            font-kerning: none;
+            font-variant-ligatures: none;
+            letter-spacing: 0.4px;
+            fill: #17212b;
+        }
         .confidence-filter-title { margin-bottom: 4px; }
+        .legend-heading, .legend-inset { box-sizing: border-box; width: 100%; padding-left: 13px; padding-right: 13px; }
+        .user-summary { width: 100%; }
+
+        .user-summary { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; }
+        .user-summary-name { margin-bottom: 6px; }
+        .user-summary-rating, .user-summary-confidence { color: #475569; font-variant-numeric: tabular-nums; }
+        .user-summary-confidence { margin-top: 4px; }
+
         .rating-tooltip {
             position: fixed; z-index: 1000; pointer-events: none;
             box-sizing: border-box; width: 340px; max-width: calc(100vw - 24px);

@@ -94,7 +94,8 @@ function renderChart() {
     if (host.clientHeight < height) host.style.height = `${height}px`;
     const { margin, bottom, right } = layout;
     // Pad the scale at both ends so scores 0 and 9 clear the chart boundaries.
-    const y = d3.scaleLinear().domain([-0.5, 9.5]).range([bottom, margin.top]);
+    // Add breathing room inside Scale without moving panel borders.
+    const y = d3.scaleLinear().domain([-0.5, 9.5]).range([bottom, margin.top + 40]);
     const x = d3.scaleBand().domain(criteria.map(criterion => criterion.id))
         .range([margin.left, right]).paddingInner(0.15).paddingOuter(0.05);
     const narrowestProduct = d3.min(criteria, criterion => x.bandwidth() / criterion.products.length) || 45;
@@ -192,6 +193,8 @@ function drawAxes({ margin, bottom, boundaryRight, axisBottom = bottom }, x, y) 
         .attr('transform', `translate(${margin.left},0)`)
         .call(d3.axisLeft(y).tickValues(d3.range(10)).tickFormat(d3.format('d')).tickSize(0).tickPadding(9))
         .select('.domain')
+        // Keep the dashed axis full-height while the plotted scale has top padding.
+        .attr('d', `M0.5,${bottom}V${margin.top}`)
         .attr('stroke', '#999')
         .attr('stroke-dasharray', '5 5');
     const horizontalAxis = svg.append('g')
@@ -206,7 +209,13 @@ function drawAxes({ margin, bottom, boundaryRight, axisBottom = bottom }, x, y) 
         .attr('stroke', '#17212b')
         .attr('stroke-width', 2)
         .attr('stroke-linecap', 'square');
-    const maxLines = Math.max(1, Math.floor((margin.bottom - 36) / 16));
+    svg.append('text').attr('class', 'axis-title criteria-axis-title')
+        .attr('x', (x.range()[0] + x.range()[1]) / 2)
+        .attr('y', axisBottom + margin.bottom - 12)
+        .attr('text-anchor', 'middle').attr('fill', '#17212b')
+        .text('Leading Sustainability Criteria');
+    // Reserve room below wrapped criterion names for the axis title.
+    const maxLines = Math.max(1, Math.floor((margin.bottom - 60) / 16));
     horizontalAxis.selectAll('.tick text')
         .attr('fill', '#17212b')
         .style('font-weight', 600)
@@ -246,16 +255,27 @@ function averageUserConfidence(userId) {
     return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
 }
 
+// Average valid ratings for the selected user within the active confidence filter.
+function averageUserRating(userId) {
+    const values = data.filter(row => row.userId === userId && matchesConfidence(row) &&
+        typeof row.value === 'number' && Number.isFinite(row.value))
+        .map(row => row.value);
+    return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+}
+
 function drawUserSummary(container) {
+    container.append('div').attr('class', 'legend-heading')
+        .style('font-weight', '600').style('margin-top', '16px').style('margin-bottom', '8px')
+        .text('User Summary:');
     const summary = container.append('div').attr('class', 'user-summary')
         .attr('role', 'status').attr('aria-live', 'polite').attr('aria-atomic', 'true')
-        .style('min-height', '90px')
+        .style('min-height', '82px')
         .style('box-sizing', 'border-box')
-        .style('margin-top', '12px').style('padding', '8px 0')
+        .style('padding', '12px')
         .style('line-height', '1.5').style('overflow-wrap', 'anywhere');
-    summary.append('div').style('font-weight', '600').style('margin-bottom', '8px')
-        .text('Confidence summary');
     summary.append('div').attr('class', 'user-summary-name').style('font-weight', '600');
+    summary.append('div').attr('class', 'user-summary-rating')
+        .attr('title', 'Average rating across evaluations for this user within the selected confidence range. Missing ratings are excluded.');
     summary.append('div').attr('class', 'user-summary-confidence')
         .attr('title', 'Average across evaluations for this user within the selected confidence range. Missing confidence values are excluded.');
     updateUserSummary();
@@ -265,11 +285,24 @@ function updateUserSummary() {
     requestAnimationFrame(fitLegendHeight);
     const summary = svg.select('.user-summary');
     summary.select('.user-summary-name')
-        .text(selectedRating === null ? '' : selectedRating.user);
+        .text(selectedRating === null ? 'User: -' : `User: ${selectedRating.user}`);
+    const averageRating = selectedRating === null ? null : averageUserRating(selectedRating.userId);
+    summary.select('.user-summary-rating').text(selectedRating === null
+        ? 'Average rating: -'
+        : `Average rating: ${averageRating === null ? 'No evaluations in range' : averageRating.toFixed(1)}`);
     const average = selectedRating === null ? null : averageUserConfidence(selectedRating.userId);
     summary.select('.user-summary-confidence').text(selectedRating === null
-        ? 'Select a point in Scale to view confidence.'
+        ? 'Average confidence: -'
         : `Average confidence: ${average === null ? 'No evaluations in range' : `${average.toFixed(1)}%`}`);
+}
+
+function deselectUserOnBackground(event) {
+    if (selectedRating === null || !event.target.matches(
+        'body, #fingerprint-frame, #fingerprint-chart, #fingerprint-chart > svg, .chart-panels, .chart-panels *'
+    )) return;
+    selectedRating = null;
+    drawSelectedUserConnection();
+    updateUserSummary();
 }
 
 function selectRatingUser(row) {
@@ -304,11 +337,12 @@ function updateConfidenceFilter(layout) {
 
 function drawConfidenceFilter(container, layout) {
     const panel = container.append('div').style('flex', '0 0 auto')
-        .style('padding-top', '10px').style('border-top', '1px solid #cbd5e1');
-    panel.append('div').attr('class', 'confidence-filter-title')
+        .style('margin-top', '20px').style('padding-top', '16px')
+        .style('border-top', '1px solid #dbe3ec');
+    panel.append('div').attr('class', 'confidence-filter-title legend-heading')
         .text('Select Confidence Range: ');
-    const width = Math.max(40, layout.legendWidth);
-    const scale = d3.scaleLinear().domain([0, 100]).range([10, width - 10]).clamp(true);
+    const width = Math.max(40, layout.legendWidth - 16);
+    const scale = d3.scaleLinear().domain([0, 100]).range([13, width - 13]).clamp(true);
     const track = panel.append('svg:svg').attr('width', width).attr('height', 40)
         .style('display', 'block').style('touch-action', 'none');
     track.append('line').attr('x1', scale(0)).attr('x2', scale(100))
@@ -321,7 +355,7 @@ function drawConfidenceFilter(container, layout) {
         .attr('tabindex', 0).attr('role', 'slider').attr('aria-orientation', 'horizontal')
         .attr('aria-label', bound => `${bound === 'min' ? 'Minimum' : 'Maximum'} confidence`)
         .style('cursor', 'ew-resize');
-    const labels = panel.append('div')
+    const labels = panel.append('div').attr('class', 'legend-inset')
         .style('display', 'flex').style('justify-content', 'space-between')
         .style('font-size', '12px');
     const minLabel = labels.append('span');
@@ -357,7 +391,7 @@ function drawConfidenceFilter(container, layout) {
     refresh();
     if (data.some(row => row.confidence == null)) {
         panel.append('div').style('font-size', '12px')
-            .text('Unknown confidence included only at 0?100%.');
+            .text('Unknown confidence included only at 0-100%.');
     }
     drawUserSummary(panel);
 }
@@ -387,6 +421,7 @@ function fitLegendHeight() {
 
 // Start only after the scales and renderers are initialized.
 function startChart() {
+    document.addEventListener('click', deselectUserOnBackground);
     overviewBars = buildOverviewBars(criteria);
     totalOverviewBars = buildOverviewBars([{ id: null, ratings: data }]);
     renderChart();
@@ -517,12 +552,14 @@ function drawLegend(layout) {
         .append('xhtml:div')
         .style('display', 'flex').style('flex-direction', 'column')
         .style('font-size', '12px').style('color', '#17212b');
+    legendContainer.style('width', `${legendWidth - 16}px`);
     const legend = legendContainer.append('div')
-        .style('flex', '0 0 auto');
+        .style('flex', '0 0 auto').style('line-height', '1.5');
     drawConfidenceFilter(legendContainer, layout);
     products.forEach(product => {
-        const row = legend.append('div').style('margin-top', '16px');
-        row.append('div')
+        const row = legend.append('div').style('margin-top', '12px')
+            .style('width', '100%');
+        row.append('div').attr('class', 'legend-heading')
             .style('font-weight', '600').style('overflow-wrap', 'anywhere')
             .style('margin-bottom', '6px').text(product.name);
 
@@ -535,11 +572,13 @@ function drawLegend(layout) {
         row.append('div')
             .attr('role', 'img')
             .attr('aria-label', `${product.name}: confidence from 100% (solid) to 0% (light)`)
-            .style('height', '14px').style('border-radius', '3px')
+            .style('height', '12px').style('border-radius', '3px')
+            .style('margin', '0 13px')
             .style('background', `linear-gradient(to right, ${highConfidenceColor}, ${lowConfidenceColor})`);
         const labels = row.append('div')
             .style('display', 'flex').style('justify-content', 'space-between')
-            .style('margin-top', '4px').style('font-size', '12px');
+            .style('margin', '6px 13px 0').style('font-size', '12px')
+            .style('color', '#475569');
         labels.append('span').text('100%');
         labels.append('span').text('confidence');
         labels.append('span').text('0%');
@@ -628,7 +667,8 @@ function drawTotalOverview({ margin, totalOverviewHeight, right, legendWidth }) 
         .range([left, chartRight]).padding(0.25);
     const overview = svg.append('g').attr('class', 'total-overview');
     overview.append('text')
-        .attr('x', overviewLeft).attr('y', top - 12)
+        .attr('x', overviewLeft + legendWidth / 2).attr('y', top - 12)
+        .attr('text-anchor', 'middle')
         .attr('fill', '#17212b').attr('font-size', 12).attr('font-weight', 600)
         .text('Overall Rating')
         .each(function () { fitLabel(this, legendWidth); })
