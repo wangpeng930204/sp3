@@ -211,7 +211,7 @@ function drawAxes({ margin, bottom, boundaryRight, axisBottom = bottom }, x, y) 
         .attr('stroke-linecap', 'square');
     svg.append('text').attr('class', 'axis-title criteria-axis-title')
         .attr('x', (x.range()[0] + x.range()[1]) / 2)
-        .attr('y', axisBottom + margin.bottom - 20)
+        .attr('y', axisBottom + margin.bottom - 35)
         .attr('text-anchor', 'middle').attr('fill', '#17212b')
         .text('Leading Sustainability Criteria');
     // Reserve room below wrapped criterion names for the axis title.
@@ -412,7 +412,8 @@ function fitLegendHeight() {
     if (!legend || !legend.firstElementChild) return;
     const available = Number(legend.getAttribute('height'));
     const required = legend.firstElementChild.scrollHeight;
-    // scrollHeight is rounded to whole CSS pixels; SVG heights can be fractional.
+    // scrollHeight is rounded to whole CSS pixels; SVG heights can be fraction
+    // al.
     // Ignore that rounding difference rather than triggering another resize.
     if (required > Math.ceil(available)) {
         host.style.height = `${host.clientHeight + Math.ceil(required - available) + 8}px`;
