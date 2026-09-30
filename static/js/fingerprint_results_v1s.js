@@ -5,7 +5,7 @@ const host = document.getElementById('fingerprint-chart');
 const initialChartHeight = host.clientHeight;
 const data = JSON.parse(document.getElementById('fingerprint-data').textContent);
 const missingEvaluationDetails = data.some(row =>
-    ['userId', 'user', 'confidence', 'comments'].some(field => row[field] == null));
+    ['userId', 'user', 'comments'].some(field => row[field] == null));
 if (missingEvaluationDetails) {
     const notice = document.createElement('p');
     notice.textContent = 'Some evaluation details are missing from the server response. Restart the app with the latest app.py, then refresh this page.';
@@ -20,7 +20,6 @@ data.forEach(row => {
     row.user = row.user ?? 'Name unavailable';
     row.comments = row.comments ?? 'Comments unavailable';
 });
-const confidenceText = row => row.confidence == null ? 'Unavailable' : `${row.confidence}%`;
 const users = Array.from(d3.group(data, row => row.userId), ([id, rows]) => ({ id, name: rows[0].user }))
     .sort((a, b) => d3.ascending(a.id, b.id));
 const products = Array.from(d3.group(data, row => row.productId), ([id, rows]) => ({
@@ -55,8 +54,6 @@ let totalOverviewBars;
 const criterionNames = new Map(criteria.map(criterion => [criterion.id, criterion.name]));
 let selectedRating = null;
 let selectedOverviewRows = null;
-let confidenceMin = 0;
-let confidenceMax = 100;
 const svg = d3.select(host).append('svg')
     .attr('role', 'group')
     .attr('aria-label', 'Y values from 0 to 9, with evaluated products grouped by LSC criterion on the X-axis');
@@ -139,15 +136,13 @@ function selectOverviewSegment(segment) {
 
 function drawOverviewSelection() {
     const matchingRows = new Set(selectedOverviewRows || []);
-    const isSelected = row => matchesConfidence(row) && matchingRows.has(row);
+    const isSelected = row => matchingRows.has(row);
     const markers = svg.selectAll('.rating-points > circle, .rating-points > path');
     markers.classed('overview-highlight', isSelected)
-        .style('fill', row => !matchesConfidence(row) ? 'none' : null)
-        .style('stroke', row => !matchesConfidence(row) ? '#9ca3af' : isSelected(row) ? '#17212b' : null)
-        .style('stroke-width', row => !matchesConfidence(row) ? 1.5 : isSelected(row) ? 3 : null)
+        .style('stroke', row => isSelected(row) ? '#17212b' : null)
+        .style('stroke-width', row => isSelected(row) ? 3 : null)
         .style('pointer-events', 'all')
-        .style('opacity', row => !matchesConfidence(row) ? 1
-            : selectedOverviewRows === null ? null : isSelected(row) ? 1 : 0.15);
+        .style('opacity', row => selectedOverviewRows === null ? null : isSelected(row) ? 1 : 0.15);
     // Bring selected markers in front of other overlapping scores.
     markers.filter(isSelected).raise();
     svg.selectAll('.overview-segment')
@@ -247,17 +242,9 @@ function wrapLabel(node, availableWidth, maxLines) {
     label.append('title').text(words.join(' '));
 }
 
-// Average this user's available confidence values within the active filter range.
-function averageUserConfidence(userId) {
-    const values = data.filter(row => row.userId === userId && matchesConfidence(row) &&
-        typeof row.confidence === 'number' && Number.isFinite(row.confidence))
-        .map(row => row.confidence);
-    return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
-}
-
-// Average valid ratings for the selected user within the active confidence filter.
+// Average all valid ratings for the selected user.
 function averageUserRating(userId) {
-    const values = data.filter(row => row.userId === userId && matchesConfidence(row) &&
+    const values = data.filter(row => row.userId === userId &&
         typeof row.value === 'number' && Number.isFinite(row.value))
         .map(row => row.value);
     return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
@@ -275,9 +262,7 @@ function drawUserSummary(container) {
         .style('line-height', '1.5').style('overflow-wrap', 'anywhere');
     summary.append('div').attr('class', 'user-summary-name').style('font-weight', '600');
     summary.append('div').attr('class', 'user-summary-rating')
-        .attr('title', 'Average rating across evaluations for this user within the selected confidence range. Missing ratings are excluded.');
-    summary.append('div').attr('class', 'user-summary-confidence')
-        .attr('title', 'Average across evaluations for this user within the selected confidence range. Missing confidence values are excluded.');
+        .attr('title', 'Average rating across evaluations for this user. Missing ratings are excluded.');
     updateUserSummary();
 }
 
@@ -289,11 +274,8 @@ function updateUserSummary() {
     const averageRating = selectedRating === null ? null : averageUserRating(selectedRating.userId);
     summary.select('.user-summary-rating').text(selectedRating === null
         ? 'Average rating: -'
-        : `Average rating: ${averageRating === null ? 'No evaluations in range' : averageRating.toFixed(1)}`);
-    const average = selectedRating === null ? null : averageUserConfidence(selectedRating.userId);
-    summary.select('.user-summary-confidence').text(selectedRating === null
-        ? 'Average confidence: -'
-        : `Average confidence: ${average === null ? 'No evaluations in range' : `${average.toFixed(1)}%`}`);
+        : `Average rating: ${averageRating === null ? 'No evaluations' : averageRating.toFixed(1)}`);
+
 }
 
 function deselectUserOnBackground(event) {
@@ -309,91 +291,6 @@ function selectRatingUser(row) {
     selectedRating = selectedRating !== null && selectedRating.userId === row.userId ? null : row;
     drawSelectedUserConnection();
     updateUserSummary();
-}
-
-function matchesConfidence(row) {
-    // Preserve unavailable confidence only while the full range is selected.
-    return row.confidence == null ? confidenceMin === 0 && confidenceMax === 100
-        : row.confidence >= confidenceMin && row.confidence <= confidenceMax;
-}
-
-function updateConfidenceFilter(layout) {
-    const filtered = data.filter(matchesConfidence);
-    overviewBars = buildOverviewBars(criteria.map(criterion => ({
-        ...criterion, ratings: criterion.ratings.filter(matchesConfidence),
-    })));
-    totalOverviewBars = buildOverviewBars([{ id: null, ratings: filtered }]);
-    selectedOverviewRows = null;
-    svg.selectAll('.overview, .total-overview').remove();
-    const x = d3.scaleBand().domain(criteria.map(criterion => criterion.id))
-        .range([layout.margin.left, layout.right]).paddingInner(0.15).paddingOuter(0.05);
-    drawOverview(layout, x);
-    drawTotalOverview(layout);
-    styleBarAxes(layout);
-    drawOverviewSelection();
-    drawSelectedUserConnection();
-    updateUserSummary();
-}
-
-function drawConfidenceFilter(container, layout) {
-    const panel = container.append('div').style('flex', '0 0 auto')
-        .style('margin-top', '20px').style('padding-top', '16px')
-        .style('border-top', '1px solid #dbe3ec');
-    panel.append('div').attr('class', 'confidence-filter-title legend-heading')
-        .text('Select Confidence Range: ');
-    const width = Math.max(40, layout.legendWidth - 16);
-    const scale = d3.scaleLinear().domain([0, 100]).range([13, width - 13]).clamp(true);
-    const track = panel.append('svg:svg').attr('width', width).attr('height', 40)
-        .style('display', 'block').style('touch-action', 'none');
-    track.append('line').attr('x1', scale(0)).attr('x2', scale(100))
-        .attr('y1', 20).attr('y2', 20).attr('stroke', '#cbd5e1').attr('stroke-width', 4);
-    const selected = track.append('line').attr('y1', 20).attr('y2', 20)
-        .attr('stroke', '#08739d').attr('stroke-width', 4);
-    const handles = track.selectAll('circle').data(['min', 'max']).join('circle')
-        .attr('cy', 20).attr('r', 8).attr('fill', '#fff')
-        .attr('stroke', '#08739d').attr('stroke-width', 2)
-        .attr('tabindex', 0).attr('role', 'slider').attr('aria-orientation', 'horizontal')
-        .attr('aria-label', bound => `${bound === 'min' ? 'Minimum' : 'Maximum'} confidence`)
-        .style('cursor', 'ew-resize');
-    const labels = panel.append('div').attr('class', 'legend-inset')
-        .style('display', 'flex').style('justify-content', 'space-between')
-        .style('font-size', '12px');
-    const minLabel = labels.append('span');
-    const maxLabel = labels.append('span');
-    function refresh() {
-        minLabel.text(`${confidenceMin}%`);
-        maxLabel.text(`${confidenceMax}%`);
-        selected.attr('x1', scale(confidenceMin)).attr('x2', scale(confidenceMax));
-        handles.attr('cx', bound => scale(bound === 'min' ? confidenceMin : confidenceMax))
-            .attr('aria-valuemin', bound => bound === 'min' ? 0 : confidenceMin)
-            .attr('aria-valuemax', bound => bound === 'min' ? confidenceMax : 100)
-            .attr('aria-valuenow', bound => bound === 'min' ? confidenceMin : confidenceMax)
-            .attr('aria-valuetext', bound => `${bound === 'min' ? confidenceMin : confidenceMax}%`);
-    }
-    function change(bound, value) {
-        value = Math.max(0, Math.min(100, Math.round(value)));
-        if (bound === 'min') confidenceMin = Math.min(value, confidenceMax);
-        else confidenceMax = Math.max(value, confidenceMin);
-        refresh();
-        updateConfidenceFilter(layout);
-    }
-    handles.call(d3.drag().on('drag', (event, bound) => change(bound, scale.invert(event.x))))
-        .on('keydown', (event, bound) => {
-            let value = bound === 'min' ? confidenceMin : confidenceMax;
-            if (['ArrowLeft', 'ArrowDown'].includes(event.key)) value -= 1;
-            else if (['ArrowRight', 'ArrowUp'].includes(event.key)) value += 1;
-            else if (event.key === 'Home') value = bound === 'min' ? 0 : confidenceMin;
-            else if (event.key === 'End') value = bound === 'min' ? confidenceMax : 100;
-            else return;
-            event.preventDefault();
-            change(bound, value);
-        });
-    refresh();
-    if (data.some(row => row.confidence == null)) {
-        panel.append('div').style('font-size', '12px')
-            .text('Unknown confidence included only at 0-100%.');
-    }
-    drawUserSummary(panel);
 }
 
 function fitLabel(node, availableWidth) {
@@ -428,32 +325,22 @@ function startChart() {
     new ResizeObserver(renderChart).observe(host);
 }
 
-// Product colors, confidence opacity, and interactions.
+// Product colors and interactions.
 const productColor = d3.scaleOrdinal().domain(products.map(product => product.id))
     .range(tab10Palette);
-// Keep zero-confidence ratings visible while making high confidence more opaque.
-const confidenceOpacity = d3.scaleLinear().domain([0, 100]).range([0.2, 1]).clamp(true);
 
 function buildOverviewBars(criteria) {
     return criteria.flatMap(criterion =>
         Array.from(d3.group(criterion.ratings, row => row.productId), ([productId, ratings]) => {
-            // Stack highest confidence at the bottom; unknown confidence goes on top.
-            const groups = Array.from(d3.group(ratings, row => row.confidence ?? null))
-                .sort(([a], [b]) => a === b ? 0 : a === null ? 1 : b === null ? -1 : b - a);
-            let total = 0;
-            const segments = groups.map(([confidence, rows]) => {
-                const value = d3.sum(rows, row => row.value);
-                const start = total;
-                total += value;
-                return { confidence, rows, value, count: rows.length, start, end: total };
-            });
+            const total = d3.sum(ratings, row => row.value);
+            const segments = [{ rows: ratings, value: total, count: ratings.length, start: 0, end: total }];
             return { criterionId: criterion.id, productId, product: ratings[0].product, segments, total };
         })
     );
 }
 
 function overviewSegmentText(bar, segment) {
-    return `${bar.criterionId === null ? 'All criteria' : criterionNames.get(bar.criterionId)} / ${bar.product}, Confidence: ${confidenceText(segment)}, Sum of ratings: ${segment.value}, Ratings: ${segment.count}`;
+    return `${bar.criterionId === null ? 'All criteria' : criterionNames.get(bar.criterionId)} / ${bar.product}, Sum of ratings: ${segment.value}, Ratings: ${segment.count}`;
 }
 
 function drawRatings({ bottom, labelBottom = bottom }, x, y) {
@@ -477,7 +364,7 @@ function drawRatings({ bottom, labelBottom = bottom }, x, y) {
             .attr('cy', row => y(row.value))
             .attr('r', Math.max(2, Math.min(9, productX.bandwidth() * 0.2)))
             .attr('fill', row => productColor(row.productId))
-            .attr('opacity', row => row.confidence == null ? 1 : confidenceOpacity(row.confidence))
+            .attr('opacity', 1)
             .attr('stroke', row => productColor(row.productId)).attr('stroke-width', 1)
             .attr('tabindex', 0)
             .attr('role', 'button')
@@ -489,8 +376,8 @@ function drawRatings({ bottom, labelBottom = bottom }, x, y) {
                     selectRatingUser(row);
                 }
             })
-            .attr('aria-label', row => `User: ${row.user}, Rating: ${row.value} / 9, Confidence: ${confidenceText(row)}, Comments: ${row.comments || 'No comments'}`)
-            .call(attachRatingTooltip, confidenceText);
+            .attr('aria-label', row => `User: ${row.user}, Rating: ${row.value} / 9, Comments: ${row.comments || 'No comments'}`)
+            .call(attachRatingTooltip);
         svg.append('g')
             .attr('fill', '#17212b')
             .attr('font-size', 12)
@@ -514,7 +401,7 @@ function drawSelectedUserConnection() {
     // Group rendered centers by product, including product and user offsets.
     const pointsByProduct = new Map();
     if (selectedRating !== null) {
-        dots.filter(row => row.userId === selectedRating.userId && matchesConfidence(row))
+        dots.filter(row => row.userId === selectedRating.userId)
             .each(function (row) {
                 if (!pointsByProduct.has(row.productId)) {
                     pointsByProduct.set(row.productId, []);
@@ -555,7 +442,7 @@ function drawLegend(layout) {
     legendContainer.style('width', `${legendWidth - 16}px`);
     const legend = legendContainer.append('div')
         .style('flex', '0 0 auto').style('line-height', '1.5');
-    drawConfidenceFilter(legendContainer, layout);
+    drawUserSummary(legendContainer);
     products.forEach(product => {
         const row = legend.append('div').style('margin-top', '12px')
             .style('width', '100%');
@@ -563,30 +450,11 @@ function drawLegend(layout) {
             .style('font-weight', '600').style('overflow-wrap', 'anywhere')
             .style('margin-bottom', '6px').text(product.name);
 
-        // Match the opacity scale used by the dots and overview segments.
-        const color = d3.color(productColor(product.id));
-        color.opacity = confidenceOpacity(0);
-        const lowConfidenceColor = color.formatRgb();
-        color.opacity = confidenceOpacity(100);
-        const highConfidenceColor = color.formatRgb();
         row.append('div')
-            .attr('role', 'img')
-            .attr('aria-label', `${product.name}: confidence from 100% (solid) to 0% (light)`)
+            .attr('role', 'img').attr('aria-label', `${product.name}: product color`)
             .style('height', '12px').style('border-radius', '3px')
-            .style('margin', '0 13px')
-            .style('background', `linear-gradient(to right, ${highConfidenceColor}, ${lowConfidenceColor})`);
-        const labels = row.append('div')
-            .style('display', 'flex').style('justify-content', 'space-between')
-            .style('margin', '6px 13px 0').style('font-size', '12px')
-            .style('color', '#475569');
-        labels.append('span').text('100%');
-        labels.append('span').text('confidence');
-        labels.append('span').text('0%');
+            .style('margin', '0 13px').style('background', productColor(product.id));
     });
-    if (data.some(row => row.confidence == null)) {
-        legend.append('div').style('margin-top', '16px')
-            .text('Unavailable confidence uses full opacity; see rating details.');
-    }
 }
 
 // Original vertical overview layout.
@@ -645,7 +513,7 @@ function drawOverview({ margin, overviewHeight }, x) {
             .attr('width', barWidth)
             .attr('height', segment => overviewY(segment.start) - overviewY(segment.end))
             .attr('fill', productColor(bar.productId))
-            .attr('fill-opacity', segment => segment.confidence === null ? 1 : confidenceOpacity(segment.confidence))
+            .attr('fill-opacity', 1)
             .attr('tabindex', 0)
             .attr('role', 'img')
             .attr('aria-label', segment => overviewSegmentText(bar, segment))
@@ -688,7 +556,7 @@ function drawTotalOverview({ margin, totalOverviewHeight, right, legendWidth }) 
             .attr('width', productX.bandwidth())
             .attr('height', segment => totalY(segment.start) - totalY(segment.end))
             .attr('fill', productColor(bar.productId))
-            .attr('fill-opacity', segment => segment.confidence === null ? 1 : confidenceOpacity(segment.confidence))
+            .attr('fill-opacity', 1)
             .attr('tabindex', 0).attr('role', 'img')
             .attr('aria-label', segment => overviewSegmentText(bar, segment))
             .call(bindOverviewSelection)

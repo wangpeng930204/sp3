@@ -30,7 +30,10 @@ function attachRatingTooltip(points, formatConfidence) {
         };
         add('rating-tooltip-user', `User: ${row.user}`);
         if (row.product) add('rating-tooltip-meta', `Product: ${row.product}`);
-        add('rating-tooltip-meta', `Rating: ${row.value} / 9 · Confidence: ${formatConfidence(row)}`);
+        const ratingText = `Rating: ${row.value} / 9`;
+        add('rating-tooltip-meta', formatConfidence
+            ? `${ratingText} \u00b7 Confidence: ${formatConfidence(row)}`
+            : ratingText);
         add('rating-tooltip-label', 'Comments');
         add('rating-tooltip-comment', row.comments || 'No comments');
         card.hidden = false;

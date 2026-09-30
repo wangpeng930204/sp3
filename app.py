@@ -647,6 +647,8 @@ def fingerprint_select_product():
 @app.route("/fingerprint/results")
 @app.route("/fingerprint/results/v1", endpoint="fingerprint_results_v1", defaults={"version": "v1"})
 @app.route("/fingerprint/results/v2", endpoint="fingerprint_results_v2", defaults={"version": "v2"})
+@app.route("/fingerprint/results/v1s", endpoint="fingerprint_results_v1s", defaults={"version": "v1s"})
+@app.route("/fingerprint/results/v2s", endpoint="fingerprint_results_v2s", defaults={"version": "v2s"})
 @app.route("/fingerprint/results/v3", endpoint="fingerprint_results_v3", defaults={"version": "v3"})
 @app.route("/fingerprint/results/v4", endpoint="fingerprint_results_v4", defaults={"version": "v4"})
 def fingerprint_results(version="v2"):

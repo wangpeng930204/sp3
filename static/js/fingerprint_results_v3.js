@@ -155,7 +155,7 @@ function drawAxes({ margin, bottom, boundaryRight, axisBottom = bottom }, x, y) 
         .attr('stroke-linecap', 'square');
     svg.append('text').attr('class', 'axis-title criteria-axis-title')
         .attr('x', (x.range()[0] + x.range()[1]) / 2)
-        .attr('y', axisBottom + margin.bottom - 12)
+        .attr('y', axisBottom + margin.bottom - 20)
         .attr('text-anchor', 'middle').attr('fill', '#17212b')
         .text('Leading Sustainability Criteria');
     // Reserve room below wrapped criterion names for the axis title.
