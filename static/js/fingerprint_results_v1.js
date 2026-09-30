@@ -297,10 +297,12 @@ function updateUserSummary() {
 }
 
 function deselectUserOnBackground(event) {
-    if (selectedRating === null || !event.target.matches(
+    if ((selectedRating === null && selectedOverviewRows === null) || !event.target.matches(
         'body, #fingerprint-frame, #fingerprint-chart, #fingerprint-chart > svg, .chart-panels, .chart-panels *'
     )) return;
     selectedRating = null;
+    selectedOverviewRows = null;
+    drawOverviewSelection();
     drawSelectedUserConnection();
     updateUserSummary();
 }
@@ -429,11 +431,18 @@ function startChart() {
     new ResizeObserver(renderChart).observe(host);
 }
 
-// Product colors, confidence opacity, and interactions.
+// Product colors, sequential confidence colors, and interactions.
 const productColor = d3.scaleOrdinal().domain(products.map(product => product.id))
     .range(tab10Palette);
-// Keep zero-confidence ratings visible while making high confidence more opaque.
-const confidenceOpacity = d3.scaleLinear().domain([0, 100]).range([0.2, 1]).clamp(true);
+// Use opaque shades of each product color so confidence is independent of the background.
+const confidenceScales = new Map(products.map(product => {
+    const color = productColor(product.id);
+    const lightColor = d3.interpolateRgb('#ffffff', color)(0.2);
+    return [product.id, d3.scaleSequential(d3.interpolateRgb(lightColor, color))
+        .domain([0, 100]).clamp(true)];
+}));
+const confidenceColor = (productId, confidence) => confidence == null
+    ? '#9ca3af' : confidenceScales.get(productId)(confidence);
 
 function buildOverviewBars(criteria) {
     return criteria.flatMap(criterion =>
@@ -477,8 +486,7 @@ function drawRatings({ bottom, labelBottom = bottom }, x, y) {
             .attr('cx', row => productX(row.productId) + productX.bandwidth() / 2 + ratingOffsets.get(row))
             .attr('cy', row => y(row.value))
             .attr('r', Math.max(2, Math.min(9, productX.bandwidth() * 0.2)))
-            .attr('fill', row => productColor(row.productId))
-            .attr('opacity', row => row.confidence == null ? 1 : confidenceOpacity(row.confidence))
+            .attr('fill', row => confidenceColor(row.productId, row.confidence))
             .attr('stroke', row => productColor(row.productId)).attr('stroke-width', 1)
             .attr('tabindex', 0)
             .attr('role', 'button')
@@ -564,15 +572,12 @@ function drawLegend(layout) {
             .style('font-weight', '600').style('overflow-wrap', 'anywhere')
             .style('margin-bottom', '6px').text(product.name);
 
-        // Match the opacity scale used by the dots and overview segments.
-        const color = d3.color(productColor(product.id));
-        color.opacity = confidenceOpacity(0);
-        const lowConfidenceColor = color.formatRgb();
-        color.opacity = confidenceOpacity(100);
-        const highConfidenceColor = color.formatRgb();
+        // Match the sequential color scale used by the dots and overview segments.
+        const lowConfidenceColor = confidenceColor(product.id, 0);
+        const highConfidenceColor = confidenceColor(product.id, 100);
         row.append('div')
             .attr('role', 'img')
-            .attr('aria-label', `${product.name}: confidence from 100% (solid) to 0% (light)`)
+            .attr('aria-label', `${product.name}: confidence from 100% (dark) to 0% (light)`)
             .style('height', '12px').style('border-radius', '3px')
             .style('margin', '0 13px')
             .style('background', `linear-gradient(to right, ${highConfidenceColor}, ${lowConfidenceColor})`);
@@ -586,7 +591,7 @@ function drawLegend(layout) {
     });
     if (data.some(row => row.confidence == null)) {
         legend.append('div').style('margin-top', '16px')
-            .text('Unavailable confidence uses full opacity; see rating details.');
+            .text('Gray fill indicates unavailable confidence; see rating details.');
     }
 }
 
@@ -645,8 +650,7 @@ function drawOverview({ margin, overviewHeight }, x) {
             .attr('y', segment => overviewY(segment.end))
             .attr('width', barWidth)
             .attr('height', segment => overviewY(segment.start) - overviewY(segment.end))
-            .attr('fill', productColor(bar.productId))
-            .attr('fill-opacity', segment => segment.confidence === null ? 1 : confidenceOpacity(segment.confidence))
+            .attr('fill', segment => confidenceColor(bar.productId, segment.confidence))
             .attr('tabindex', 0)
             .attr('role', 'img')
             .attr('aria-label', segment => overviewSegmentText(bar, segment))
@@ -688,8 +692,7 @@ function drawTotalOverview({ margin, totalOverviewHeight, right, legendWidth }) 
             .attr('y', segment => totalY(segment.end))
             .attr('width', productX.bandwidth())
             .attr('height', segment => totalY(segment.start) - totalY(segment.end))
-            .attr('fill', productColor(bar.productId))
-            .attr('fill-opacity', segment => segment.confidence === null ? 1 : confidenceOpacity(segment.confidence))
+            .attr('fill', segment => confidenceColor(bar.productId, segment.confidence))
             .attr('tabindex', 0).attr('role', 'img')
             .attr('aria-label', segment => overviewSegmentText(bar, segment))
             .call(bindOverviewSelection)

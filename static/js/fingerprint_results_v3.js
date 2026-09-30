@@ -61,8 +61,9 @@ const svg = d3.select(host).append('svg')
 
 function renderChart() {
     const width = host.clientWidth;
-    const height = host.clientHeight;
-    if (!width || !height) return;
+    const height = Math.max(host.clientHeight, 680 + products.length * 76);
+    if (!width || !host.clientHeight) return;
+    if (host.clientHeight < height) host.style.height = `${height}px`;
 
     const layout = getChartLayout(width, height);
     const { margin, bottom, right } = layout;
@@ -240,10 +241,12 @@ function updateUserSummary() {
 }
 
 function deselectUserOnBackground(event) {
-    if (selectedRating === null || !event.target.matches(
+    if ((selectedRating === null && selectedOverviewRows === null) || !event.target.matches(
         'body, #fingerprint-frame, #fingerprint-chart, #fingerprint-chart > svg, .chart-panels, .chart-panels *'
     )) return;
     selectedRating = null;
+    selectedOverviewRows = null;
+    drawOverviewSelection();
     drawSelectedUserConnection();
     updateUserSummary();
 }
@@ -355,11 +358,18 @@ function startChart() {
     new ResizeObserver(renderChart).observe(host);
 }
 
-// Product colors, confidence opacity, and interactions.
+// Product colors, sequential confidence colors, and interactions.
 const productColor = d3.scaleOrdinal().domain(products.map(product => product.id))
     .range(tab10Palette);
-// Keep zero-confidence ratings visible while making high confidence more opaque.
-const confidenceOpacity = d3.scaleLinear().domain([0, 100]).range([0.2, 1]).clamp(true);
+// Use opaque shades of each product color so confidence is independent of the background.
+const confidenceScales = new Map(products.map(product => {
+    const color = productColor(product.id);
+    const lightColor = d3.interpolateRgb('#ffffff', color)(0.2);
+    return [product.id, d3.scaleSequential(d3.interpolateRgb(lightColor, color))
+        .domain([0, 100]).clamp(true)];
+}));
+const confidenceColor = (productId, confidence) => confidence == null
+    ? '#9ca3af' : confidenceScales.get(productId)(confidence);
 
 function buildOverviewBars(criteria) {
     return criteria.flatMap(criterion =>
@@ -403,8 +413,7 @@ function drawRatings({ bottom, labelBottom = bottom }, x, y) {
             .attr('cx', row => productX(row.productId) + productX.bandwidth() / 2 + ratingOffsets.get(row))
             .attr('cy', row => y(row.value))
             .attr('r', Math.max(2, Math.min(9, productX.bandwidth() * 0.2)))
-            .attr('fill', row => productColor(row.productId))
-            .attr('opacity', row => row.confidence == null ? 1 : confidenceOpacity(row.confidence))
+            .attr('fill', row => confidenceColor(row.productId, row.confidence))
             .attr('stroke', row => productColor(row.productId)).attr('stroke-width', 1)
             .attr('tabindex', 0)
             .attr('role', 'button')
@@ -469,7 +478,11 @@ function drawSelectedUserConnection() {
         .attr('stroke-linecap', 'round');
 }
 
+const panelContentObservers = [];
+
 function drawLegend(layout) {
+    panelContentObservers.forEach(observer => observer.disconnect());
+    panelContentObservers.length = 0;
     const { margin, right, bottom, legendWidth } = layout;
     const legendTop = layout.legendTop ?? margin.top + 20;
     const legendContainer = svg.append('foreignObject')
@@ -477,33 +490,31 @@ function drawLegend(layout) {
         .attr('width', legendWidth)
         .attr('height', layout.legendHeight ?? Math.max(1, bottom - legendTop))
         .append('xhtml:div')
-        .style('height', '100%').style('display', 'flex').style('flex-direction', 'column')
+        .style('display', 'flex').style('flex-direction', 'column')
         .style('font-size', '12px').style('color', '#17212b');
     legendContainer.style('width', `${legendWidth - 16}px`);
     const legend = legendContainer.append('div')
-        .style('flex', '1 1 auto').style('min-height', '0').style('overflow-y', 'auto');
+        .style('flex', '0 0 auto');
     const controls = svg.append('foreignObject')
         .attr('class', 'confidence-controls')
         .attr('x', layout.legendLeft).attr('y', layout.controlTop)
         .attr('width', legendWidth).attr('height', layout.controlHeight)
-        .append('xhtml:div').style('height', '100%').style('overflow-y', 'auto');
+        .append('xhtml:div');
     controls.style('width', `${legendWidth - 16}px`);
     drawConfidenceFilter(controls, layout);
+    fitPanelContent(controls, layout.controlHeight);
     products.forEach(product => {
         const row = legend.append('div').style('margin-top', '16px');
         row.append('div').attr('class', 'legend-heading')
             .style('font-weight', '600').style('overflow-wrap', 'anywhere')
             .style('margin-bottom', '6px').text(product.name);
 
-        // Match the opacity scale used by the dots and overview segments.
-        const color = d3.color(productColor(product.id));
-        color.opacity = confidenceOpacity(0);
-        const lowConfidenceColor = color.formatRgb();
-        color.opacity = confidenceOpacity(100);
-        const highConfidenceColor = color.formatRgb();
+        // Match the sequential color scale used by the dots and overview segments.
+        const lowConfidenceColor = confidenceColor(product.id, 0);
+        const highConfidenceColor = confidenceColor(product.id, 100);
         row.append('div')
             .attr('role', 'img')
-            .attr('aria-label', `${product.name}: confidence from 100% (solid) to 0% (light)`)
+            .attr('aria-label', `${product.name}: confidence from 100% (dark) to 0% (light)`)
             .style('height', '14px').style('border-radius', '3px').style('margin', '0 13px')
             .style('background', `linear-gradient(to right, ${highConfidenceColor}, ${lowConfidenceColor})`);
         const labels = row.append('div').attr('class', 'legend-inset')
@@ -515,8 +526,24 @@ function drawLegend(layout) {
     });
     if (data.some(row => row.confidence == null)) {
         legend.append('div').style('margin-top', '16px')
-            .text('Unavailable confidence uses full opacity; see rating details.');
+            .text('Gray fill indicates unavailable confidence; see rating details.');
     }
+    fitPanelContent(legendContainer, layout.legendHeight);
+}
+
+function fitPanelContent(content, height) {
+    const node = content.node();
+    const fit = () => {
+        content.style('transform-origin', 'top left')
+            .style('transform', `scale(${Math.min(1, height / Math.max(1, node.scrollHeight))})`);
+    };
+    const observer = new ResizeObserver(() => {
+        if (!node.isConnected) observer.disconnect();
+        else fit();
+    });
+    observer.observe(node);
+    panelContentObservers.push(observer);
+    fit();
 }
 
 // V1 product encoding with the criterion overview below the rating distribution.
@@ -534,8 +561,8 @@ function getChartLayout(width, height) {
     const overviewTop = overviewBottom - overviewHeight;
     const bottom = overviewTop; // Scale meets Bars at the gray divider.
     const margin = { top: scaleTop, left: 80, right: width - right, bottom: 80 };
-    // Keep enough room for controls and a scrollable legend on shorter screens.
-    const totalTop = Math.max(overviewTop - 200, 16 + 240 + 12 + 72 + 12 + 20);
+    // Reserve a full legend row for each product above the totals panel.
+    const totalTop = Math.max(overviewTop - 200, 16 + 240 + 12 + products.length * 76 + 20 + 12 + 20);
     const totalBottom = overviewBottom;
     const topPanelTop = 16; // Shared outer top edge for both columns.
     const controlPanelTop = topPanelTop;
@@ -658,8 +685,7 @@ function drawV3Stack(parent, bar, left, width, y) {
         .attr('x', left).attr('width', width)
         .attr('y', segment => y(segment.end))
         .attr('height', segment => y(segment.start) - y(segment.end))
-        .attr('fill', productColor(bar.productId))
-        .attr('fill-opacity', segment => segment.confidence === null ? 1 : confidenceOpacity(segment.confidence))
+        .attr('fill', segment => confidenceColor(bar.productId, segment.confidence))
         .attr('tabindex', 0).attr('aria-label', segment => overviewSegmentText(bar, segment))
         .call(bindOverviewSelection)
         .append('title').text(segment => overviewSegmentText(bar, segment));

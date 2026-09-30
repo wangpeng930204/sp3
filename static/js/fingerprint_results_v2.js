@@ -72,10 +72,10 @@ function getChartLayout(width, height) {
         left: Math.min(100, width * 0.12),
     };
     // Fit the overview into the initial canvas before growing the panel.
-    // Keep enough room per row for the bars and their two-line axis labels.
+    // Reserve 76px for bars and the rotated confidence label, plus 36px below for rating labels.
     const overviewBudget = Math.max(0, overviewCanvasHeight - 440 - margin.bottom - 24);
     const preferredOverviewHeight = Math.max(products.length * 100, Math.min(250, overviewCanvasHeight * 0.2));
-    const overviewHeight = Math.max(products.length * 64, Math.min(preferredOverviewHeight, overviewBudget));
+    const overviewHeight = Math.max(products.length * 112, Math.min(preferredOverviewHeight, overviewBudget));
     margin.top = Math.max(margin.top, overviewHeight + 24);
     const legendWidth = Math.min(250, margin.right - 28);
     // Give the scale distribution a useful minimum height even with many products.
@@ -298,10 +298,12 @@ function updateUserSummary() {
 }
 
 function deselectUserOnBackground(event) {
-    if (selectedRating === null || !event.target.matches(
+    if ((selectedRating === null && selectedOverviewRows === null) || !event.target.matches(
         'body, #fingerprint-frame, #fingerprint-chart, #fingerprint-chart > svg, .chart-panels, .chart-panels *'
     )) return;
     selectedRating = null;
+    selectedOverviewRows = null;
+    drawOverviewSelection();
     drawSelectedUserConnection();
     updateUserSummary();
 }
@@ -626,6 +628,7 @@ function drawRatings({ bottom, markerArea }, x, y) {
 }
 
 function drawSelectedUserConnection() {
+    updateUserLegendSelection();
     const dots = svg.selectAll('.rating-points .rating-marker');
     dots.attr('aria-pressed', row => selectedRating !== null && row.userId === selectedRating.userId);
 
@@ -658,6 +661,13 @@ function drawSelectedUserConnection() {
         .attr('stroke-width', 2)
         .attr('stroke-linejoin', 'round')
         .attr('stroke-linecap', 'round');
+}
+
+function updateUserLegendSelection() {
+    svg.selectAll('.user-legend-button')
+        .attr('aria-pressed', user => selectedRating !== null && selectedRating.userId === user.id)
+        .style('box-shadow', user => selectedRating !== null && selectedRating.userId === user.id
+            ? '0 0 0 2px #17212b' : null);
 }
 
 function drawLegend(layout) {
@@ -718,10 +728,16 @@ function drawLegend(layout) {
     users.forEach(user => {
         const row = userLegend.append('div').style('display', 'flex').style('align-items', 'center')
             .style('gap', '6px').style('max-width', '100%');
-        row.append('span').style('flex', '0 0 12px').style('height', '12px')
-            .style('border-radius', '50%').style('background', userColor(user.id));
+        row.append('button').datum(user)
+            .attr('class', 'user-legend-button').attr('type', 'button')
+            .attr('aria-label', `Select user: ${user.name}`)
+            .style('flex', '0 0 18px').style('width', '18px').style('height', '18px')
+            .style('padding', '0').style('border', '0').style('cursor', 'pointer')
+            .style('border-radius', '50%').style('background', userColor(user.id))
+            .on('click', () => selectRatingUser(data.find(rating => rating.userId === user.id)));
         row.append('span').style('overflow-wrap', 'anywhere').text(user.name);
     });
+    updateUserLegendSelection();
     if (data.some(row => row.confidence == null)) {
         legend.append('div').style('margin-top', '16px')
             .text('Unavailable confidence uses the smallest marker; see rating details.');

@@ -279,10 +279,12 @@ function updateUserSummary() {
 }
 
 function deselectUserOnBackground(event) {
-    if (selectedRating === null || !event.target.matches(
+    if ((selectedRating === null && selectedOverviewRows === null) || !event.target.matches(
         'body, #fingerprint-frame, #fingerprint-chart, #fingerprint-chart > svg, .chart-panels, .chart-panels *'
     )) return;
     selectedRating = null;
+    selectedOverviewRows = null;
+    drawOverviewSelection();
     drawSelectedUserConnection();
     updateUserSummary();
 }
