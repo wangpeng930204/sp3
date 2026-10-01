@@ -674,8 +674,10 @@ def fingerprint_results(version="v2"):
 
 
 # Temporary viewing links for workshop 1811. Remove these routes after sharing.
-@app.route("/fingerprint/results/overall", defaults={"version": "v1"})
-@app.route("/fingerprint/results/detail", defaults={"version": "v2"})
+@app.route("/fingerprint/results/visualization1", defaults={"version": "v1"})
+@app.route("/fingerprint/results/visualization2", defaults={"version": "v2"})
+@app.route("/fingerprint/results/visualization1/base", defaults={"version": "v1s"})
+@app.route("/fingerprint/results/visualization2/base", defaults={"version": "v2s"})
 def fingerprint_results_1811(version):
     with get_db() as conn:
         workshop = conn.execute(
