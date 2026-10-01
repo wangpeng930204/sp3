@@ -696,7 +696,7 @@ function drawLegend(layout) {
     products.forEach(product => {
         const row = productLegend.append('div').style('flex', '0 0 auto');
         row.append('div').attr('class', 'legend-heading').style('font-weight', '600')
-            .style('overflow-wrap', 'anywhere').text(product.name);
+            .style('overflow-wrap', 'anywhere').text(`${product.name} (${productShortNames.get(product.id)})`);
         const keyWidth = Math.max(60, legendWidth);
         const startX = 13;
         const endX = keyWidth - 13;

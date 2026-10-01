@@ -507,7 +507,7 @@ function drawLegend(layout) {
         const row = legend.append('div').style('margin-top', '16px');
         row.append('div').attr('class', 'legend-heading')
             .style('font-weight', '600').style('overflow-wrap', 'anywhere')
-            .style('margin-bottom', '6px').text(product.name);
+            .style('margin-bottom', '6px').text(`${product.name} (${productShortNames.get(product.id)})`);
 
         // Match the sequential color scale used by the dots and overview segments.
         const lowConfidenceColor = confidenceColor(product.id, 0);

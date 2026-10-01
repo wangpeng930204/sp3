@@ -450,7 +450,7 @@ function drawLegend(layout) {
             .style('width', '100%');
         row.append('div').attr('class', 'legend-heading')
             .style('font-weight', '600').style('overflow-wrap', 'anywhere')
-            .style('margin-bottom', '6px').text(product.name);
+            .style('margin-bottom', '6px').text(`${product.name} (${productShortNames.get(product.id)})`);
 
         row.append('div')
             .attr('role', 'img').attr('aria-label', `${product.name}: product color`)

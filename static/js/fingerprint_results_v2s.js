@@ -568,7 +568,7 @@ function drawLegend(layout) {
     products.forEach(product => {
         const row = productLegend.append('div').style('flex', '0 0 auto');
         row.append('div').attr('class', 'legend-heading').style('font-weight', '600')
-            .style('overflow-wrap', 'anywhere').text(product.name);
+            .style('overflow-wrap', 'anywhere').text(`${product.name} (${productShortNames.get(product.id)})`);
         const key = row.append('svg:svg').attr('width', legendWidth).attr('height', 28)
             .attr('role', 'img').attr('aria-label', `${product.name}: product shape`);
         key.append('path').attr('transform', 'translate(26,14)')
