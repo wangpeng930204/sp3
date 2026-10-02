@@ -18,7 +18,7 @@ STEP_DESCRIPTION_MAX_LENGTH = 180
 
 def get_db():
     return psycopg.connect(
-        host=os.environ.get("PGHOST", "194.47.155.215"),
+        host=os.environ.get("PGHOST", "127.0.0.1"),
         port=int(os.environ.get("PGPORT", "5432")),
         user=os.environ.get("PGUSER", "sp3user"),
         password=os.environ["PGPASSWORD"],
@@ -674,10 +674,10 @@ def fingerprint_results(version="v2"):
 
 
 # Temporary viewing links for workshop 1811. Remove these routes after sharing.
-@app.route("/fingerprint/results/visualization1", defaults={"version": "v1"})
-@app.route("/fingerprint/results/visualization2", defaults={"version": "v2"})
-@app.route("/fingerprint/results/visualization1/base", defaults={"version": "v1s"})
-@app.route("/fingerprint/results/visualization2/base", defaults={"version": "v2s"})
+@app.route("/fingerprint/results/visualizationX", defaults={"version": "v1"})
+@app.route("/fingerprint/results/visualizationY", defaults={"version": "v2"})
+@app.route("/fingerprint/results/visualizationX/base", defaults={"version": "v1s"})
+@app.route("/fingerprint/results/visualizationY/base", defaults={"version": "v2s"})
 def fingerprint_results_1811(version):
     with get_db() as conn:
         workshop = conn.execute(

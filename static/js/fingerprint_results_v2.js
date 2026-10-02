@@ -102,7 +102,7 @@ function renderChart() {
     const x = d3.scaleBand().domain(criteria.map(criterion => criterion.id))
         .range([margin.left, right]).paddingInner(0.15).paddingOuter(0.05);
     const narrowestProduct = d3.min(criteria, criterion => x.bandwidth() / criterion.products.length) || 45;
-    layout.markerArea = Math.PI * Math.pow(Math.max(3, Math.min(9, narrowestProduct * 0.2)), 2);
+    layout.markerArea = Math.PI * Math.pow(Math.max(3, Math.min(12, narrowestProduct * 0.2)), 2);
     svg.attr('width', width).attr('height', height).attr('viewBox', `0 0 ${width} ${height}`);
     svg.selectAll('*').remove();
 
@@ -368,15 +368,15 @@ function drawConfidenceFilter(container, layout) {
         maxLabel.text(`${confidenceMax}%`);
         selected.attr('x1', scale(confidenceMin)).attr('x2', scale(confidenceMax));
         handles.attr('cx', bound => scale(bound === 'min' ? confidenceMin : confidenceMax))
-            .attr('aria-valuemin', bound => bound === 'min' ? 0 : confidenceMin)
-            .attr('aria-valuemax', bound => bound === 'min' ? confidenceMax : 100)
+            .attr('aria-valuemin', bound => bound === 'min' ? 0 : confidenceMin + 1)
+            .attr('aria-valuemax', bound => bound === 'min' ? confidenceMax - 1 : 100)
             .attr('aria-valuenow', bound => bound === 'min' ? confidenceMin : confidenceMax)
             .attr('aria-valuetext', bound => `${bound === 'min' ? confidenceMin : confidenceMax}%`);
     }
     function change(bound, value) {
         value = Math.max(0, Math.min(100, Math.round(value)));
-        if (bound === 'min') confidenceMin = Math.min(value, confidenceMax);
-        else confidenceMax = Math.max(value, confidenceMin);
+        if (bound === 'min') confidenceMin = Math.min(value, confidenceMax - 1);
+        else confidenceMax = Math.max(value, confidenceMin + 1);
         refresh();
         updateConfidenceFilter(layout);
     }
@@ -385,8 +385,8 @@ function drawConfidenceFilter(container, layout) {
             let value = bound === 'min' ? confidenceMin : confidenceMax;
             if (['ArrowLeft', 'ArrowDown'].includes(event.key)) value -= 1;
             else if (['ArrowRight', 'ArrowUp'].includes(event.key)) value += 1;
-            else if (event.key === 'Home') value = bound === 'min' ? 0 : confidenceMin;
-            else if (event.key === 'End') value = bound === 'min' ? confidenceMax : 100;
+            else if (event.key === 'Home') value = bound === 'min' ? 0 : confidenceMin + 1;
+            else if (event.key === 'End') value = bound === 'min' ? confidenceMax - 1 : 100;
             else return;
             event.preventDefault();
             change(bound, value);
@@ -697,25 +697,27 @@ function drawLegend(layout) {
         const row = productLegend.append('div').style('flex', '0 0 auto');
         row.append('div').attr('class', 'legend-heading').style('font-weight', '600')
             .style('overflow-wrap', 'anywhere').text(`${product.name} (${productShortNames.get(product.id)})`);
-        const keyWidth = Math.max(60, legendWidth);
-        const startX = 13;
-        const endX = keyWidth - 13;
-        const key = row.append('svg:svg').attr('width', keyWidth).attr('height', 40)
+        const keyWidth = Math.max(60, legendWidth - 16);
+        // Leave room for the largest product symbols at both ends of the scale.
+        const symbolInset = 24;
+        const startX = symbolInset;
+        const endX = keyWidth - symbolInset;
+        const key = row.append('svg:svg').attr('width', keyWidth).attr('height', 52)
             .attr('role', 'img')
             .attr('aria-label', `${product.name}: smaller shape means 0% confidence, larger shape means 100% confidence`);
         key.append('line').attr('x1', startX).attr('x2', endX)
-            .attr('y1', 13).attr('y2', 13)
+            .attr('y1', symbolInset).attr('y2', symbolInset)
             .attr('stroke', '#94a3b8').attr('stroke-width', 1);
-        key.append('text').attr('x', (startX + endX) / 2).attr('y', 35)
+        key.append('text').attr('x', (startX + endX) / 2).attr('y', 49)
             .attr('text-anchor', 'middle').attr('font-size', 12).attr('fill', '#17212b')
             .text('confidence');
         [0, 100].forEach(confidence => {
             const position = confidence === 0 ? startX : endX;
-            key.append('path').attr('transform', `translate(${position},13)`)
+            key.append('path').attr('transform', `translate(${position},${symbolInset})`)
                 .attr('d', d3.symbol().type(productShape(product.id))
                     .size(markerSize(confidence, markerArea))())
                 .attr('fill', '#17212b').attr('stroke', '#475569').attr('stroke-width', 1);
-            key.append('text').attr('x', position).attr('y', 35)
+            key.append('text').attr('x', position).attr('y', 49)
                 .attr('text-anchor', 'middle').attr('font-size', 12).attr('fill', '#17212b')
                 .text(`${confidence}%`);
         });

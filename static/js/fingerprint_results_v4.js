@@ -367,15 +367,15 @@ function drawConfidenceFilter(container, layout) {
         maxLabel.text(`${confidenceMax}%`);
         selected.attr('x1', scale(confidenceMin)).attr('x2', scale(confidenceMax));
         handles.attr('cx', bound => scale(bound === 'min' ? confidenceMin : confidenceMax))
-            .attr('aria-valuemin', bound => bound === 'min' ? 0 : confidenceMin)
-            .attr('aria-valuemax', bound => bound === 'min' ? confidenceMax : 100)
+            .attr('aria-valuemin', bound => bound === 'min' ? 0 : confidenceMin + 1)
+            .attr('aria-valuemax', bound => bound === 'min' ? confidenceMax - 1 : 100)
             .attr('aria-valuenow', bound => bound === 'min' ? confidenceMin : confidenceMax)
             .attr('aria-valuetext', bound => `${bound === 'min' ? confidenceMin : confidenceMax}%`);
     }
     function change(bound, value) {
         value = Math.max(0, Math.min(100, Math.round(value)));
-        if (bound === 'min') confidenceMin = Math.min(value, confidenceMax);
-        else confidenceMax = Math.max(value, confidenceMin);
+        if (bound === 'min') confidenceMin = Math.min(value, confidenceMax - 1);
+        else confidenceMax = Math.max(value, confidenceMin + 1);
         refresh();
         updateConfidenceFilter(layout);
     }
@@ -384,8 +384,8 @@ function drawConfidenceFilter(container, layout) {
             let value = bound === 'min' ? confidenceMin : confidenceMax;
             if (['ArrowLeft', 'ArrowDown'].includes(event.key)) value -= 1;
             else if (['ArrowRight', 'ArrowUp'].includes(event.key)) value += 1;
-            else if (event.key === 'Home') value = bound === 'min' ? 0 : confidenceMin;
-            else if (event.key === 'End') value = bound === 'min' ? confidenceMax : 100;
+            else if (event.key === 'Home') value = bound === 'min' ? 0 : confidenceMin + 1;
+            else if (event.key === 'End') value = bound === 'min' ? confidenceMax - 1 : 100;
             else return;
             event.preventDefault();
             change(bound, value);
