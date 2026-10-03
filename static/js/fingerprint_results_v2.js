@@ -32,7 +32,7 @@ const products = Array.from(d3.group(data, row => row.productId), ([id, rows]) =
 //     '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
 //     '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf',
 // ];
-const colorPalette =['#1b9e77','#d95f02','#7570b3','#e7298a','#66a61e']
+const colorPalette =['#1b9e77','#d95f02','#7570b3','#e7298a','#e6ab02']
 
 const productShortNames = new Map(products.map((product, index) => {
     let suffix = '';

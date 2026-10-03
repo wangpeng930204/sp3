@@ -26,10 +26,10 @@ const products = Array.from(d3.group(data, row => row.productId), ([id, rows]) =
     id,
     name: rows[0].product,
 })).sort((a, b) => d3.ascending(a.id, b.id));
-// Equivalent to sns.color_palette("tab10"); repeats after ten categories.
+// Equivalent to sns.color_palette("tab10"); repeats after ten categories. '#1f77b4', '#ff7f0e',
 const tab10Palette = [
-    '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
-    '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf',
+    '#2ca02c', '#d62728', '#9467bd','#8c564b',
+    '#e377c2', '#7f7f7f', '#bcbd22', '#17becf',
 ];
 
 const productShortNames = new Map(products.map((product, index) => {
