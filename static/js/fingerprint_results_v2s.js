@@ -478,7 +478,7 @@ function drawRatings({ bottom, markerArea }, x, y) {
             .attr('d', d3.symbol().type(row => productShape(row.productId))
                 .size(markerArea))
             .attr('fill', row => userColor(row.userId))
-            .attr('stroke', row => userColor(row.userId)).attr('stroke-width', 1)
+            .attr('stroke', '#000').attr('stroke-width', 1)
             .attr('tabindex', 0)
             .attr('role', 'button')
             .style('cursor', 'pointer')
