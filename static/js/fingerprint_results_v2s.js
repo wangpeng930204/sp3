@@ -27,11 +27,11 @@ const products = Array.from(d3.group(data, row => row.productId), ([id, rows]) =
     name: rows[0].product,
 })).sort((a, b) => d3.ascending(a.id, b.id));
 // Equivalent to sns.color_palette("tab10"); repeats after ten categories. '#1f77b4', '#ff7f0e',
-const tab10Palette = [
-    '#2ca02c', '#d62728', '#9467bd','#8c564b',
-    '#e377c2', '#7f7f7f', '#bcbd22', '#17becf',
-];
-
+// const tab10Palette = [
+//     '#2ca02c', '#d62728', '#9467bd','#8c564b',
+//     '#e377c2', '#7f7f7f', '#bcbd22', '#17becf',
+// ];
+const colorPalette =['#1b9e77','#d95f02','#7570b3','#e7298a','#e6ab02']
 const productShortNames = new Map(products.map((product, index) => {
     let suffix = '';
     for (let value = index + 1; value > 0; value = Math.floor((value - 1) / 26)) {
@@ -316,7 +316,7 @@ function startChart() {
 
 // User colors and fixed-size product shapes.
 const userColor = d3.scaleOrdinal().domain(users.map(user => user.id))
-    .range(tab10Palette);
+    .range(colorPalette);
 const productShape = d3.scaleOrdinal().domain(products.map(product => product.id))
     .range([d3.symbolTriangle, d3.symbolSquare, d3.symbolCircle,
         d3.symbolDiamond, d3.symbolCross, d3.symbolStar, d3.symbolWye]);
