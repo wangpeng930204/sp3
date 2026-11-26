@@ -18,7 +18,7 @@ STEP_DESCRIPTION_MAX_LENGTH = 180
 
 def get_db():
     return psycopg.connect(
-        host=os.environ.get("PGHOST", "127.0.0.1"),
+        host=os.environ.get("PGHOST", "194.47.155.215"),
         port=int(os.environ.get("PGPORT", "5432")),
         user=os.environ.get("PGUSER", "sp3user"),
         password=os.environ["PGPASSWORD"],
